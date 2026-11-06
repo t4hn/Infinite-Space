@@ -670,55 +670,209 @@ export class CelestialFactory {
     };
   }
 
+  // Procedural 3D Gradient Noise for authentic craggy asteroid displacement
+  private static createNoise3D(seed: number) {
+    const rng = mulberry32(seed);
+    const p = new Uint8Array(512);
+    const perm = new Uint8Array(256);
+    for (let i = 0; i < 256; i++) perm[i] = i;
+    for (let i = 255; i > 0; i--) {
+      const j = Math.floor(rng() * (i + 1));
+      const tmp = perm[i];
+      perm[i] = perm[j];
+      perm[j] = tmp;
+    }
+    for (let i = 0; i < 512; i++) {
+      p[i] = perm[i & 255];
+    }
+
+    const grad3 = [
+      [1, 1, 0], [-1, 1, 0], [1, -1, 0], [-1, -1, 0],
+      [1, 0, 1], [-1, 0, 1], [1, 0, -1], [-1, 0, -1],
+      [0, 1, 1], [0, -1, 1], [0, 1, -1], [0, -1, -1]
+    ];
+
+    function dot(g: number[], x: number, y: number, z: number) {
+      return g[0] * x + g[1] * y + g[2] * z;
+    }
+
+    return function (x: number, y: number, z: number): number {
+      const X = Math.floor(x) & 255;
+      const Y = Math.floor(y) & 255;
+      const Z = Math.floor(z) & 255;
+
+      const fx = x - Math.floor(x);
+      const fy = y - Math.floor(y);
+      const fz = z - Math.floor(z);
+
+      const u = fx * fx * fx * (fx * (fx * 6 - 15) + 10);
+      const v = fy * fy * fy * (fy * (fy * 6 - 15) + 10);
+      const w = fz * fz * fz * (fz * (fz * 6 - 15) + 10);
+
+      const A = p[X] + Y;
+      const AA = p[A] + Z;
+      const AB = p[A + 1] + Z;
+      const B = p[X + 1] + Y;
+      const BA = p[B] + Z;
+      const BB = p[B + 1] + Z;
+
+      const g000 = grad3[p[AA] % 12];
+      const g100 = grad3[p[BA] % 12];
+      const g010 = grad3[p[AB] % 12];
+      const g110 = grad3[p[BB] % 12];
+      const g001 = grad3[p[AA + 1] % 12];
+      const g101 = grad3[p[BA + 1] % 12];
+      const g011 = grad3[p[AB + 1] % 12];
+      const g111 = grad3[p[BB + 1] % 12];
+
+      const x1 = THREE.MathUtils.lerp(dot(g000, fx, fy, fz), dot(g100, fx - 1, fy, fz), u);
+      const x2 = THREE.MathUtils.lerp(dot(g010, fx, fy - 1, fz), dot(g110, fx - 1, fy - 1, fz), u);
+      const y1 = THREE.MathUtils.lerp(x1, x2, v);
+
+      const x3 = THREE.MathUtils.lerp(dot(g001, fx, fy, fz - 1), dot(g101, fx - 1, fy, fz - 1), u);
+      const x4 = THREE.MathUtils.lerp(dot(g011, fx, fy - 1, fz - 1), dot(g111, fx - 1, fy - 1, fz - 1), u);
+      const y2 = THREE.MathUtils.lerp(x3, x4, v);
+
+      return THREE.MathUtils.lerp(y1, y2, w);
+    };
+  }
+
+  private static fbm3D(noise: (x: number, y: number, z: number) => number, x: number, y: number, z: number): number {
+    let total = 0;
+    let freq = 1.0;
+    let amp = 1.0;
+    let maxAmp = 0;
+    for (let o = 0; o < 3; o++) {
+      total += noise(x * freq, y * freq, z * freq) * amp;
+      maxAmp += amp;
+      freq *= 2.08;
+      amp *= 0.5;
+    }
+    return total / maxAmp;
+  }
+
   /**
    * 6. High-Performance Instanced Asteroid Field (300+ Rocks)
+   * Authentic jagged, dark space rocks with multi-octave 3D noise, faceted shading, and per-instance albedos.
    */
   public static createAsteroidField(count: number = 320, spread: number = 400, seed: number = 1): CelestialAnimationTarget {
     const group = new THREE.Group();
-    const asteroidGeo = new THREE.DodecahedronGeometry(2.5, 1);
     const rng = mulberry32(seed * 59 + 23);
-    
-    // Displace vertices slightly with pseudo noise so asteroids look organic
-    const pos = asteroidGeo.attributes.position;
-    for (let i = 0; i < pos.count; i++) {
-      const vx = pos.getX(i);
-      const vy = pos.getY(i);
-      const vz = pos.getZ(i);
-      const dist = Math.sqrt(vx * vx + vy * vy + vz * vz);
-      const displacement = 1.0 + (Math.sin(vx * 3) + Math.cos(vy * 3) + Math.sin(vz * 3)) * 0.12;
-      pos.setXYZ(i, (vx / dist) * 2.5 * displacement, (vy / dist) * 2.5 * displacement, (vz / dist) * 2.5 * displacement);
-    }
-    asteroidGeo.computeVertexNormals();
 
+    // 1. Create 4 distinct rugged asteroid geometries with multi-octave 3D noise on Icosahedron (detail 2)
+    const numGeometries = 4;
+    const geometries: THREE.BufferGeometry[] = [];
+    for (let g = 0; g < numGeometries; g++) {
+      const geo = new THREE.IcosahedronGeometry(2.5, 2).toNonIndexed();
+      const noise = CelestialFactory.createNoise3D(seed * 97 + g * 251 + 17);
+      const pos = geo.attributes.position;
+      for (let i = 0; i < pos.count; i++) {
+        const vx = pos.getX(i);
+        const vy = pos.getY(i);
+        const vz = pos.getZ(i);
+        const len = Math.sqrt(vx * vx + vy * vy + vz * vz);
+        const nx = vx / len;
+        const ny = vy / len;
+        const nz = vz / len;
+
+        // Multi-octave 3D displacement
+        const n = CelestialFactory.fbm3D(noise, nx * 1.5, ny * 1.5, nz * 1.5);
+        // Asymmetric surface displacement for rugged, craggy space rock
+        const r = 2.5 * (1.0 + n * 0.42);
+        pos.setXYZ(i, nx * r, ny * r, nz * r);
+      }
+      geo.computeVertexNormals();
+      geometries.push(geo);
+    }
+
+    // 2. Dark, rough, non-sheened space rock material
     const asteroidTex = SpaceTextureGenerator.createAsteroidTexture();
     const asteroidMat = new THREE.MeshStandardMaterial({
       map: asteroidTex,
-      roughness: 0.88,
-      metalness: 0.18
+      bumpMap: asteroidTex,
+      bumpScale: 0.18,
+      roughness: 1.0,
+      metalness: 0.0,
+      envMapIntensity: 0.3,
+      flatShading: true
     });
 
-    const instancedMesh = new THREE.InstancedMesh(asteroidGeo, asteroidMat, count);
-    instancedMesh.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
+    // 3. Compute counts per geometry and initialize InstancedMeshes
+    const meshes: THREE.InstancedMesh[] = [];
+    for (let g = 0; g < numGeometries; g++) {
+      const meshCount = Math.floor(count / numGeometries) + (g < (count % numGeometries) ? 1 : 0);
+      const instMesh = new THREE.InstancedMesh(geometries[g], asteroidMat, meshCount);
+      instMesh.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
+      meshes.push(instMesh);
+    }
+
+    // Palette: charcoal, brown and rust greys (#2b2a28 to #5a5248, with rust and blue-grey tints)
+    const rockColors = [
+      new THREE.Color('#2b2a28'), // dark charcoal
+      new THREE.Color('#33312e'), // deep stony charcoal
+      new THREE.Color('#3c3732'), // dark brown-grey
+      new THREE.Color('#453e37'), // brown-grey
+      new THREE.Color('#4c453d'), // mid brown-grey
+      new THREE.Color('#524b42'), // warm stony grey
+      new THREE.Color('#5a5248'), // lighter brown-grey limit
+      new THREE.Color('#4a372f'), // rust tint
+      new THREE.Color('#543b31'), // rust-brown tint
+      new THREE.Color('#30343a'), // cool blue-grey tint
+      new THREE.Color('#2e333a'), // deep blue-grey tint
+      new THREE.Color('#363b44'), // slate blue-grey tint
+    ];
 
     const dummy = new THREE.Object3D();
-    const speeds: Array<{ rotSpeed: THREE.Vector3; basePos: THREE.Vector3 }> = [];
+    const speeds: Array<{
+      meshIndex: number;
+      localIndex: number;
+      rotSpeed: THREE.Vector3;
+      basePos: THREE.Vector3;
+    }> = [];
+
+    const currentMeshIndices = new Array(numGeometries).fill(0);
 
     for (let i = 0; i < count; i++) {
+      const g = i % numGeometries;
+      const localIdx = currentMeshIndices[g]++;
+
       const angle = rng() * Math.PI * 2;
       const radius = 60 + rng() * (spread - 60);
       const y = (rng() - 0.5) * 80;
       const x = Math.cos(angle) * radius;
       const z = (rng() - 0.5) * 600;
 
-      const scale = 0.6 + rng() * 2.2;
+      // Non-uniform scaling: pick one axis 1.0 - 1.8x longer for irregular, elongated boulders
+      const baseScale = 0.6 + rng() * 2.2;
+      const elongation = 1.0 + rng() * 0.8; // 1.0 to 1.8x
+      const elongatedAxis = Math.floor(rng() * 3); // 0 = X, 1 = Y, 2 = Z
+
+      let scaleX = baseScale * (0.85 + rng() * 0.3);
+      let scaleY = baseScale * (0.85 + rng() * 0.3);
+      let scaleZ = baseScale * (0.85 + rng() * 0.3);
+
+      if (elongatedAxis === 0) scaleX *= elongation;
+      else if (elongatedAxis === 1) scaleY *= elongation;
+      else scaleZ *= elongation;
+
       dummy.position.set(x, y, z);
       dummy.rotation.set(rng() * Math.PI, rng() * Math.PI, rng() * Math.PI);
-      dummy.scale.set(scale, scale * (0.8 + rng() * 0.4), scale);
+      dummy.scale.set(scaleX, scaleY, scaleZ);
       dummy.updateMatrix();
 
-      instancedMesh.setMatrixAt(i, dummy.matrix);
+      meshes[g].setMatrixAt(localIdx, dummy.matrix);
+
+      // Per-instance color variation with setColorAt
+      const baseColor = rockColors[Math.floor(rng() * rockColors.length)].clone();
+      const tintJitter = (rng() - 0.5) * 0.04;
+      baseColor.r = Math.max(0.06, Math.min(0.48, baseColor.r + tintJitter));
+      baseColor.g = Math.max(0.06, Math.min(0.48, baseColor.g + tintJitter));
+      baseColor.b = Math.max(0.06, Math.min(0.48, baseColor.b + tintJitter));
+      meshes[g].setColorAt(localIdx, baseColor);
 
       speeds.push({
+        meshIndex: g,
+        localIndex: localIdx,
         rotSpeed: new THREE.Vector3(
           (rng() - 0.5) * 0.8,
           (rng() - 0.5) * 0.8,
@@ -728,27 +882,36 @@ export class CelestialFactory {
       });
     }
 
-    instancedMesh.instanceMatrix.needsUpdate = true;
-    instancedMesh.computeBoundingSphere();
-    group.add(instancedMesh);
+    for (const mesh of meshes) {
+      mesh.instanceMatrix.needsUpdate = true;
+      if (mesh.instanceColor) {
+        mesh.instanceColor.needsUpdate = true;
+      }
+      mesh.computeBoundingSphere();
+      group.add(mesh);
+    }
 
     return {
       group,
-      update: (time: number, delta: number) => {
+      update: (_time: number, delta: number) => {
         // Slowly tumble individual asteroids
         for (let i = 0; i < Math.min(count, 120); i++) {
-          instancedMesh.getMatrixAt(i, dummy.matrix);
+          const item = speeds[i];
+          const mesh = meshes[item.meshIndex];
+          mesh.getMatrixAt(item.localIndex, dummy.matrix);
           dummy.matrix.decompose(dummy.position, dummy.quaternion, dummy.scale);
-          dummy.rotation.x += speeds[i].rotSpeed.x * delta;
-          dummy.rotation.y += speeds[i].rotSpeed.y * delta;
-          dummy.rotation.z += speeds[i].rotSpeed.z * delta;
+          dummy.rotation.x += item.rotSpeed.x * delta;
+          dummy.rotation.y += item.rotSpeed.y * delta;
+          dummy.rotation.z += item.rotSpeed.z * delta;
           dummy.updateMatrix();
-          instancedMesh.setMatrixAt(i, dummy.matrix);
+          mesh.setMatrixAt(item.localIndex, dummy.matrix);
         }
-        instancedMesh.instanceMatrix.needsUpdate = true;
+        for (const mesh of meshes) {
+          mesh.instanceMatrix.needsUpdate = true;
+        }
       },
       dispose: () => {
-        asteroidGeo.dispose();
+        geometries.forEach(g => g.dispose());
         asteroidMat.dispose();
       }
     };

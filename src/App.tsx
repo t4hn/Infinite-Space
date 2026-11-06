@@ -15,6 +15,10 @@ export default function App() {
   const [isAudioMuted, setIsAudioMuted] = useState<boolean>(() => cosmicAudio.getIsMuted());
   const [audioPulse, setAudioPulse] = useState<number>(0);
   const [webGlError, setWebGlError] = useState<string | null>(null);
+  const [isZenMode, setIsZenMode] = useState<boolean>(false);
+  const [showExitZenPill, setShowExitZenPill] = useState<boolean>(false);
+  const exitZenTimerRef = useRef<number | null>(null);
+  const pointerStartRef = useRef<{ x: number; y: number; time: number } | null>(null);
 
   // Initialize Three.js engine once in isolated container
   useEffect(() => {
@@ -82,6 +86,56 @@ export default function App() {
     }
   }, []);
 
+  const handleToggleZen = useCallback(() => {
+    setIsZenMode((prev) => {
+      const next = !prev;
+      if (!next) {
+        setShowExitZenPill(false);
+        if (exitZenTimerRef.current !== null) {
+          clearTimeout(exitZenTimerRef.current);
+          exitZenTimerRef.current = null;
+        }
+      }
+      return next;
+    });
+  }, []);
+
+  const handleSceneInteraction = useCallback(() => {
+    if (!isZenMode) return;
+    setShowExitZenPill(true);
+    if (exitZenTimerRef.current !== null) {
+      clearTimeout(exitZenTimerRef.current);
+    }
+    exitZenTimerRef.current = window.setTimeout(() => {
+      setShowExitZenPill(false);
+      exitZenTimerRef.current = null;
+    }, 3000);
+  }, [isZenMode]);
+
+  const handlePointerDown = useCallback((e: React.PointerEvent) => {
+    if (!isZenMode) return;
+    pointerStartRef.current = { x: e.clientX, y: e.clientY, time: performance.now() };
+  }, [isZenMode]);
+
+  const handlePointerUp = useCallback((e: React.PointerEvent) => {
+    if (!isZenMode || !pointerStartRef.current) return;
+    const dx = Math.abs(e.clientX - pointerStartRef.current.x);
+    const dy = Math.abs(e.clientY - pointerStartRef.current.y);
+    const dt = performance.now() - pointerStartRef.current.time;
+    pointerStartRef.current = null;
+    if (dx < 12 && dy < 12 && dt < 600) {
+      handleSceneInteraction();
+    }
+  }, [isZenMode, handleSceneInteraction]);
+
+  useEffect(() => {
+    return () => {
+      if (exitZenTimerRef.current !== null) {
+        clearTimeout(exitZenTimerRef.current);
+      }
+    };
+  }, []);
+
   if (webGlError) {
     return (
       <div className="flex items-center justify-center w-screen h-screen bg-[#070312] text-white p-6">
@@ -98,9 +152,13 @@ export default function App() {
   return (
     <div
       className="relative w-screen h-screen overflow-hidden bg-black select-none"
+      onClick={handleSceneInteraction}
+      onPointerDown={handlePointerDown}
+      onPointerUp={handlePointerUp}
       data-testid="cosmic-journey-container"
       data-speed={engineStatus?.speedMode || 'cruise'}
       data-sector={engineStatus?.sectorIndex ?? 0}
+      data-zen={isZenMode}
     >
       {/* 3D WebGL Canvas isolated mount container */}
       <div
@@ -117,6 +175,9 @@ export default function App() {
         onCaptureScreenshot={handleCaptureScreenshot}
         isAudioMuted={isAudioMuted}
         audioPulse={audioPulse}
+        isZenMode={isZenMode}
+        onToggleZen={handleToggleZen}
+        showExitZenPill={showExitZenPill}
       />
     </div>
   );

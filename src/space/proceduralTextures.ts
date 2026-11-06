@@ -238,24 +238,25 @@ export class SpaceTextureGenerator {
     }
 
     const canvas = document.createElement('canvas');
-    canvas.width = 256;
-    canvas.height = 256;
+    canvas.width = 512;
+    canvas.height = 512;
     const ctx = canvas.getContext('2d')!;
 
-    ctx.fillStyle = '#4a4a50';
+    // Dark charcoal space rock base
+    ctx.fillStyle = '#222224';
     ctx.fillRect(0, 0, canvas.width, canvas.height);
 
-    // Craters and pits
-    for (let i = 0; i < 40; i++) {
+    // Craters and pits with subtle, non-white rims
+    for (let i = 0; i < 55; i++) {
       const cx = Math.random() * canvas.width;
       const cy = Math.random() * canvas.height;
-      const rad = 4 + Math.random() * 18;
+      const rad = 4 + Math.random() * 26;
 
-      const grad = ctx.createRadialGradient(cx - rad * 0.2, cy - rad * 0.2, 1, cx, cy, rad);
-      grad.addColorStop(0, '#1a1a20');
-      grad.addColorStop(0.7, '#2f2f35');
-      grad.addColorStop(0.9, '#8e8e98'); // Raised crater rim
-      grad.addColorStop(1, 'transparent');
+      const grad = ctx.createRadialGradient(cx - rad * 0.15, cy - rad * 0.15, 1, cx, cy, rad);
+      grad.addColorStop(0, '#101012');       // Deep shadowed crater floor
+      grad.addColorStop(0.65, '#1a1a1d');    // Crater inner wall
+      grad.addColorStop(0.88, '#323236');    // Crater rim only slightly lighter than surface
+      grad.addColorStop(1, 'transparent');   // Smooth blending into rock surface
 
       ctx.fillStyle = grad;
       ctx.beginPath();
@@ -263,7 +264,19 @@ export class SpaceTextureGenerator {
       ctx.fill();
     }
 
+    // Add fine grain mineral noise directly to the canvas pixels
+    const imgData = ctx.getImageData(0, 0, canvas.width, canvas.height);
+    const data = imgData.data;
+    for (let i = 0; i < data.length; i += 4) {
+      const grain = (Math.random() - 0.5) * 20;
+      data[i] = Math.max(0, Math.min(255, data[i] + grain));
+      data[i + 1] = Math.max(0, Math.min(255, data[i + 1] + grain));
+      data[i + 2] = Math.max(0, Math.min(255, data[i + 2] + grain));
+    }
+    ctx.putImageData(imgData, 0, 0);
+
     const texture = new THREE.CanvasTexture(canvas);
+    texture.colorSpace = THREE.SRGBColorSpace;
     texture.wrapS = THREE.RepeatWrapping;
     texture.wrapT = THREE.RepeatWrapping;
     this.cachedTextures.set(key, texture);

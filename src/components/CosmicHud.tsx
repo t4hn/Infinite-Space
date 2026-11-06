@@ -17,7 +17,9 @@ import {
   Camera,
   ChevronDown,
   ChevronUp,
-  Info
+  Info,
+  EyeOff,
+  Eye
 } from 'lucide-react';
 import { SpaceEngineStatus } from '../space/spaceJourneyEngine';
 import { FlightSpeedMode, BIOMES } from '../space/sectorLogic';
@@ -30,6 +32,9 @@ interface CosmicHudProps {
   onCaptureScreenshot: () => void;
   isAudioMuted: boolean;
   audioPulse: number;
+  isZenMode: boolean;
+  onToggleZen: () => void;
+  showExitZenPill: boolean;
 }
 
 export const CosmicHud: React.FC<CosmicHudProps> = ({
@@ -39,7 +44,10 @@ export const CosmicHud: React.FC<CosmicHudProps> = ({
   onToggleAudio,
   onCaptureScreenshot,
   isAudioMuted,
-  audioPulse
+  audioPulse,
+  isZenMode,
+  onToggleZen,
+  showExitZenPill
 }) => {
   const [isDockCollapsed, setIsDockCollapsed] = useState(false);
   const [activeTab, setActiveTab] = useState<'flight' | 'destinations' | 'lore'>('flight');
@@ -50,6 +58,8 @@ export const CosmicHud: React.FC<CosmicHudProps> = ({
     const handleKeyDown = (e: KeyboardEvent) => {
       if (e.key === 'h' || e.key === 'H') {
         setIsDockCollapsed(prev => !prev);
+      } else if (e.key === 'z' || e.key === 'Z') {
+        onToggleZen();
       } else if (e.key === 'm' || e.key === 'M') {
         onToggleAudio();
       } else if (e.key === '1') {
@@ -64,7 +74,7 @@ export const CosmicHud: React.FC<CosmicHudProps> = ({
     };
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [onToggleAudio, onSetSpeed]);
+  }, [onToggleAudio, onSetSpeed, onToggleZen]);
 
   const handleAudioButtonClick = () => {
     onToggleAudio();
@@ -90,8 +100,16 @@ export const CosmicHud: React.FC<CosmicHudProps> = ({
       )}
 
       {/* Top Header Telemetry (Minimal & elegant) */}
-      <div className="absolute top-5 left-5 right-5 flex justify-between items-start pointer-events-none">
-        <div className="flex flex-col gap-1 bg-black/60 border border-white/10 rounded-lg p-3 max-w-sm pointer-events-auto">
+      <div
+        className={`absolute top-5 left-5 right-5 flex justify-between items-start pointer-events-none transition-opacity duration-300 ${
+          isZenMode ? 'opacity-0 pointer-events-none' : 'opacity-100'
+        }`}
+      >
+        <div
+          className={`flex flex-col gap-1 bg-black/60 border border-white/10 rounded-lg p-3 max-w-sm ${
+            isZenMode ? 'pointer-events-none' : 'pointer-events-auto'
+          }`}
+        >
           <div className="flex items-center gap-2">
             <span className="w-2 h-2 rounded-full bg-cyan-400" />
             <span className="text-white/60 tracking-widest text-[10px]">AETHERIA DEEP SPACE</span>
@@ -115,7 +133,11 @@ export const CosmicHud: React.FC<CosmicHudProps> = ({
         </div>
 
         {/* Top-Right Telemetry readouts */}
-        <div className="hidden sm:flex items-center gap-4 bg-black/60 border border-white/10 rounded-lg px-3.5 py-2 pointer-events-auto text-white/70">
+        <div
+          className={`hidden sm:flex items-center gap-4 bg-black/60 border border-white/10 rounded-lg px-3.5 py-2 text-white/70 ${
+            isZenMode ? 'pointer-events-none' : 'pointer-events-auto'
+          }`}
+        >
           <div className="text-right">
             <div className="text-[10px] text-white/40 tracking-wider">DISTANCE</div>
             <div className="font-semibold text-white tracking-wider">{distanceLy.toFixed(1)} LY</div>
@@ -145,12 +167,11 @@ export const CosmicHud: React.FC<CosmicHudProps> = ({
         </div>
       </div>
 
-
       {/* Unified Bottom Dock (Collapsible, <= 15% viewport height footprint) */}
       <div
-        className={`absolute bottom-5 left-1/2 -translate-x-1/2 w-[94vw] max-w-3xl pointer-events-auto transition-transform duration-300 ease-out ${
+        className={`absolute bottom-5 left-1/2 -translate-x-1/2 w-[94vw] max-w-3xl transition-all duration-300 ease-out ${
           isDockCollapsed ? 'translate-y-[calc(100%-28px)]' : 'translate-y-0'
-        }`}
+        } ${isZenMode ? 'opacity-0 pointer-events-none' : 'opacity-100 pointer-events-auto'}`}
       >
         {/* Collapse / Expand Toggle Tab */}
         <div className="flex justify-center mb-1">
@@ -206,7 +227,7 @@ export const CosmicHud: React.FC<CosmicHudProps> = ({
               </button>
             </div>
 
-            {/* Quick Actions (Audio, Screenshot) */}
+            {/* Quick Actions (Audio, Screenshot, Zen) */}
             <div className="flex items-center gap-2">
               <button
                 onClick={handleAudioButtonClick}
@@ -230,6 +251,16 @@ export const CosmicHud: React.FC<CosmicHudProps> = ({
               >
                 <Camera className="w-3.5 h-3.5" />
                 <span className="hidden sm:inline text-[10px]">Capture</span>
+              </button>
+
+              <button
+                onClick={onToggleZen}
+                className="p-2 rounded-lg border border-white/10 text-white/70 hover:text-white hover:bg-white/5 transition-colors flex items-center gap-1.5"
+                title="Toggle Zen Mode (Hotkey: Z)"
+                aria-label="Toggle Zen mode"
+              >
+                <EyeOff className="w-3.5 h-3.5" />
+                <span className="hidden sm:inline text-[10px]">Zen</span>
               </button>
             </div>
           </div>
@@ -329,6 +360,30 @@ export const CosmicHud: React.FC<CosmicHudProps> = ({
             </div>
           )}
         </div>
+      </div>
+
+      {/* Exit Zen Mode Pill for touch and mobile users */}
+      <div
+        className={`absolute bottom-6 left-1/2 -translate-x-1/2 transition-opacity duration-300 z-40 ${
+          isZenMode && showExitZenPill
+            ? 'opacity-100 pointer-events-auto'
+            : 'opacity-0 pointer-events-none'
+        }`}
+      >
+        <button
+          onClick={(e) => {
+            e.stopPropagation();
+            onToggleZen();
+          }}
+          onPointerDown={(e) => e.stopPropagation()}
+          onPointerUp={(e) => e.stopPropagation()}
+          className="bg-black/85 hover:bg-black/95 active:scale-95 border border-white/20 text-white/90 hover:text-white px-4 py-2 rounded-full text-xs font-sans font-medium flex items-center gap-2 shadow-2xl backdrop-blur-md transition-all cursor-pointer"
+          title="Exit Zen Mode (Hotkey: Z)"
+          aria-label="Exit Zen mode"
+        >
+          <Eye className="w-3.5 h-3.5 text-cyan-400" />
+          <span>Exit Zen</span>
+        </button>
       </div>
     </div>
   );
