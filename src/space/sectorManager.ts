@@ -43,7 +43,8 @@ export class SectorManager {
     cameraZ: number,
     time: number,
     delta: number,
-    audioPulse: number
+    audioPulse: number,
+    cameraPos?: THREE.Vector3
   ): { currentBiome: CosmicBiome; sectorIndex: number } {
     const sectorIndex = getSectorIndex(cameraZ, SECTOR_LENGTH);
     this.currentSectorIndex = sectorIndex;
@@ -75,7 +76,7 @@ export class SectorManager {
       } else {
         // Animate hero body and nebulae
         if (sector.heroBody) {
-          sector.heroBody.update(time, delta, audioPulse);
+          sector.heroBody.update(time, delta, audioPulse, cameraPos);
         }
 
         sector.nebulae.forEach((nebula) => {

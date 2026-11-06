@@ -8,10 +8,13 @@ import { SpaceTextureGenerator } from './proceduralTextures';
 import { BlackHoleDiskShader, GravitationalLensShader } from './shaders/blackHoleShader';
 import { AtmosphereGlowShader, PulsarJetShader } from './shaders/atmosphereShader';
 import { mulberry32 } from './sectorLogic';
+import { calculateCameraDistanceFade } from './fadeHelper';
+
+const _tempTargetPos = new THREE.Vector3();
 
 export interface CelestialAnimationTarget {
   group: THREE.Group;
-  update: (time: number, delta: number, audioPulse: number) => void;
+  update: (time: number, delta: number, audioPulse: number, cameraPos?: THREE.Vector3) => void;
   dispose: () => void;
 }
 
@@ -161,7 +164,7 @@ export class CelestialFactory {
 
     return {
       group,
-      update: (time: number, delta: number, audioPulse: number) => {
+      update: (time: number, delta: number, audioPulse: number, cameraPos?: THREE.Vector3) => {
         planetMesh.rotation.y += delta * 0.08;
         ringMesh.rotation.z += delta * 0.02;
 
@@ -172,8 +175,17 @@ export class CelestialFactory {
         const moon2Angle = -time * 0.4 + 1.2;
         moon2.position.set(Math.cos(moon2Angle) * 115, -Math.sin(moon2Angle) * 24, Math.sin(moon2Angle) * 115);
 
+        // Smooth distance fade when camera approaches or flies through the gas giant system
+        group.getWorldPosition(_tempTargetPos);
+        const fade = cameraPos ? calculateCameraDistanceFade(_tempTargetPos, cameraPos, 35, 115) : 1.0;
+
+        ringMat.opacity = 0.88 * fade;
+        outerRingMat.opacity = 0.25 * fade;
+
         // Aurora pulse
-        auroraMat.opacity = 0.45 + Math.sin(time * 3) * 0.2 + audioPulse * 0.35;
+        const auroraAlpha = (0.45 + Math.sin(time * 3) * 0.2 + audioPulse * 0.35) * fade;
+        auroraMat.opacity = auroraAlpha;
+        (southAurora.material as THREE.MeshBasicMaterial).opacity = auroraAlpha;
       },
       dispose: () => {
         geometriesToDispose.forEach(g => g.dispose());
@@ -284,7 +296,7 @@ export class CelestialFactory {
 
     return {
       group,
-      update: (time: number, delta: number, audioPulse: number) => {
+      update: (time: number, delta: number, audioPulse: number, cameraPos?: THREE.Vector3) => {
         crustMesh.rotation.y += delta * 0.06;
         cloudMesh.rotation.y += delta * 0.085; // Clouds drift faster than surface
 
@@ -295,7 +307,12 @@ export class CelestialFactory {
         stationGroup.position.set(Math.cos(stAngle) * 32, Math.sin(stAngle) * 12, Math.sin(stAngle) * 32);
         stationGroup.rotation.y += delta * 0.8;
 
-        polarMat.opacity = 0.35 + audioPulse * 0.4;
+        // Smooth distance fade when approaching terrestrial world cloud layer
+        group.getWorldPosition(_tempTargetPos);
+        const fade = cameraPos ? calculateCameraDistanceFade(_tempTargetPos, cameraPos, 24, 75) : 1.0;
+
+        cloudMat.opacity = 0.85 * fade;
+        polarMat.opacity = (0.35 + audioPulse * 0.4) * fade;
       },
       dispose: () => {
         geometriesToDispose.forEach(g => g.dispose());
@@ -412,7 +429,7 @@ export class CelestialFactory {
 
     return {
       group,
-      update: (time: number, delta: number, audioPulse: number) => {
+      update: (time: number, delta: number, audioPulse: number, cameraPos?: THREE.Vector3) => {
         diskMat.uniforms.uTime.value = time;
         diskMat.uniforms.uAudioPulse.value = audioPulse;
 
@@ -425,6 +442,11 @@ export class CelestialFactory {
         photonMat.uniforms.uAudioPulse.value = audioPulse;
 
         haloMesh.rotation.z += delta * 0.4;
+
+        // Smooth camera distance fade for outer plasma halo
+        group.getWorldPosition(_tempTargetPos);
+        const fade = cameraPos ? calculateCameraDistanceFade(_tempTargetPos, cameraPos, 25, 80) : 1.0;
+        haloMat.opacity = 0.6 * fade;
       },
       dispose: () => {
         geometriesToDispose.forEach(g => g.dispose());
@@ -543,7 +565,7 @@ export class CelestialFactory {
 
     return {
       group,
-      update: (time: number, delta: number, audioPulse: number) => {
+      update: (time: number, delta: number, audioPulse: number, cameraPos?: THREE.Vector3) => {
         coreMesh.rotation.x += delta * 0.15;
         coreMesh.rotation.y += delta * 0.22;
 
@@ -561,10 +583,14 @@ export class CelestialFactory {
         energySphere.rotation.x -= delta * 0.3;
         energySphere.rotation.y -= delta * 0.4;
 
+        // Smooth distance fade when approaching anomaly core
+        group.getWorldPosition(_tempTargetPos);
+        const fade = cameraPos ? calculateCameraDistanceFade(_tempTargetPos, cameraPos, 18, 65) : 1.0;
+
         // Reactive pulse
         const s = 1.0 + audioPulse * 0.18;
         energySphere.scale.set(s, s, s);
-        energyMat.opacity = 0.6 + audioPulse * 0.4;
+        energyMat.opacity = (0.6 + audioPulse * 0.4) * fade;
       },
       dispose: () => {
         geometriesToDispose.forEach(g => g.dispose());
@@ -653,7 +679,7 @@ export class CelestialFactory {
 
     return {
       group,
-      update: (time: number, delta: number, audioPulse: number) => {
+      update: (time: number, delta: number, audioPulse: number, cameraPos?: THREE.Vector3) => {
         // Fast pulsar spin (Magnetar rotation)
         group.rotation.y += delta * 2.5;
         group.rotation.z = Math.sin(time * 1.5) * 0.2; // Precession wobble
@@ -661,7 +687,12 @@ export class CelestialFactory {
         beamMat.uniforms.uTime.value = time;
         beamMat.uniforms.uAudioPulse.value = audioPulse;
 
-        coronaMat.opacity = 0.5 + audioPulse * 0.45;
+        // Smooth distance fade for magnetic loop and corona
+        group.getWorldPosition(_tempTargetPos);
+        const fade = cameraPos ? calculateCameraDistanceFade(_tempTargetPos, cameraPos, 20, 70) : 1.0;
+
+        coronaMat.opacity = (0.5 + audioPulse * 0.45) * fade;
+        loopMat.opacity = 0.5 * fade;
       },
       dispose: () => {
         geometriesToDispose.forEach(g => g.dispose());
@@ -796,6 +827,63 @@ export class CelestialFactory {
       envMapIntensity: 0.3,
       flatShading: true
     });
+
+    asteroidMat.onBeforeCompile = (shader) => {
+      shader.vertexShader = `
+        varying vec3 vAsteroidWorldPos;
+      ` + shader.vertexShader;
+
+      shader.vertexShader = shader.vertexShader.replace(
+        '#include <worldpos_vertex>',
+        `#include <worldpos_vertex>
+         vec4 astWorldPos = vec4(transformed, 1.0);
+         #ifdef USE_INSTANCING
+           astWorldPos = instanceMatrix * astWorldPos;
+         #endif
+         astWorldPos = modelMatrix * astWorldPos;
+         vAsteroidWorldPos = astWorldPos.xyz;
+        `
+      );
+
+      shader.fragmentShader = `
+        varying vec3 vAsteroidWorldPos;
+      ` + shader.fragmentShader;
+
+      shader.fragmentShader = shader.fragmentShader.replace(
+        'void main() {',
+        `void main() {
+          // Camera distance fade via ordered Bayer 4x4 dithered discard
+          float camDist = distance(cameraPosition, vAsteroidWorldPos);
+          float fade = smoothstep(10.0, 42.0, camDist);
+          int bx = int(mod(gl_FragCoord.x, 4.0));
+          int by = int(mod(gl_FragCoord.y, 4.0));
+          float threshold = 0.0;
+          if (bx == 0) {
+            if (by == 0) threshold = 0.0 / 16.0;
+            else if (by == 1) threshold = 12.0 / 16.0;
+            else if (by == 2) threshold = 3.0 / 16.0;
+            else threshold = 15.0 / 16.0;
+          } else if (bx == 1) {
+            if (by == 0) threshold = 8.0 / 16.0;
+            else if (by == 1) threshold = 4.0 / 16.0;
+            else if (by == 2) threshold = 11.0 / 16.0;
+            else threshold = 7.0 / 16.0;
+          } else if (bx == 2) {
+            if (by == 0) threshold = 2.0 / 16.0;
+            else if (by == 1) threshold = 14.0 / 16.0;
+            else if (by == 2) threshold = 1.0 / 16.0;
+            else threshold = 13.0 / 16.0;
+          } else {
+            if (by == 0) threshold = 10.0 / 16.0;
+            else if (by == 1) threshold = 6.0 / 16.0;
+            else if (by == 2) threshold = 9.0 / 16.0;
+            else threshold = 5.0 / 16.0;
+          }
+          if (fade < threshold) discard;
+        `
+      );
+    };
+    asteroidMat.customProgramCacheKey = () => 'asteroid_fade_dither';
 
     // 3. Compute counts per geometry and initialize InstancedMeshes
     const meshes: THREE.InstancedMesh[] = [];

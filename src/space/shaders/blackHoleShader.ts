@@ -74,7 +74,11 @@ export const BlackHoleDiskShader = {
       float photonRing = smoothstep(0.05, 0.0, r) * 2.5;
       col += vec3(1.0, 0.95, 0.8) * photonRing;
 
-      float alpha = clamp(intensity * 0.95, 0.0, 1.0);
+      // Camera distance fade to prevent sudden popping when passing near or through disk
+      float camDist = distance(cameraPosition, vWorldPosition);
+      float camFade = smoothstep(15.0, 65.0, camDist);
+
+      float alpha = clamp(intensity * 0.95 * camFade, 0.0, 1.0);
       gl_FragColor = vec4(col, alpha);
     }
   `
@@ -106,6 +110,10 @@ export const GravitationalLensShader = {
       vec3 viewDir = normalize(cameraPosition - vWorldPosition);
       float fresnel = 1.0 - abs(dot(vNormal, viewDir));
       fresnel = pow(fresnel, 3.5);
+
+      // Camera distance fade
+      float camDist = distance(cameraPosition, vWorldPosition);
+      fresnel *= smoothstep(15.0, 60.0, camDist);
 
       // Glowing photon sphere corona
       vec3 ringColor = vec3(1.0, 0.75, 0.4) * (1.0 + uAudioPulse * 0.8);

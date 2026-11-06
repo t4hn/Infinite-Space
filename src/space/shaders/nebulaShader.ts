@@ -13,15 +13,18 @@ export const NebulaShaderMaterial = {
     uColorCore: { value: new THREE.Color('#ffffff') },
     uAudioPulse: { value: 0.0 },
     uDensity: { value: 0.85 },
-    uNoiseScale: { value: 0.004 }
+    uNoiseScale: { value: 0.004 },
+    uRadius: { value: 300.0 }
   },
   vertexShader: `
     varying vec2 vUv;
     varying vec3 vWorldPosition;
+    varying vec3 vLocalPosition;
     varying vec3 vNormal;
 
     void main() {
       vUv = uv;
+      vLocalPosition = position;
       vNormal = normalize(normalMatrix * normal);
       vec4 worldPos = modelMatrix * vec4(position, 1.0);
       vWorldPosition = worldPos.xyz;
@@ -36,9 +39,11 @@ export const NebulaShaderMaterial = {
     uniform float uAudioPulse;
     uniform float uDensity;
     uniform float uNoiseScale;
+    uniform float uRadius;
 
     varying vec2 vUv;
     varying vec3 vWorldPosition;
+    varying vec3 vLocalPosition;
     varying vec3 vNormal;
 
     // Periodic pseudo-noise functions that avoid negative mod issues
@@ -90,15 +95,24 @@ export const NebulaShaderMaterial = {
       float n2 = fbm(p * 1.6 + vec3(3.7, -t * 0.4, 1.9));
 
       // Billowy density with smooth edge falloff
-      float density = smoothstep(0.28, 0.72, n1 + n2 * 0.3) * uDensity;
+      float density = smoothstep(0.26, 0.72, n1 + n2 * 0.3) * uDensity;
 
-      // View-dependent edge softening - eliminates polygon silhouette completely
+      // 1. Soft radial falloff from center to shell boundary (so density is not driven only by rim angle)
+      float normDist = length(vLocalPosition) / max(uRadius, 1.0);
+      float radialFalloff = 1.0 - smoothstep(0.4, 0.98, normDist);
+      density *= radialFalloff;
+
+      // 2. View-dependent edge softening - eliminates polygon silhouette completely
       vec3 viewDir = normalize(cameraPosition - vWorldPosition);
       float rim = clamp(dot(vNormal, viewDir), 0.0, 1.0);
-      float edgeFade = smoothstep(0.05, 0.55, rim);
+      float edgeFade = smoothstep(0.04, 0.50, rim);
       density *= edgeFade;
 
-      if (density < 0.015) discard;
+      // 3. Camera-distance fade: smoothly dissolves as camera approaches the nebula shell
+      float camDist = distance(cameraPosition, vWorldPosition);
+      density *= smoothstep(20.0, 160.0, camDist);
+
+      if (density < 0.008) discard;
 
       // Rich chromatic coloration without blinding washout
       vec3 col = mix(uColor1, uColor2, smoothstep(0.25, 0.75, n2));
@@ -130,7 +144,8 @@ export function createNebulaMesh(
       uColorCore: { value: new THREE.Color(coreColor) },
       uAudioPulse: { value: 0.0 },
       uDensity: { value: 0.52 },
-      uNoiseScale: { value: 1.0 / (radius * 0.5) }
+      uNoiseScale: { value: 1.0 / (radius * 0.5) },
+      uRadius: { value: radius }
     },
     transparent: true,
     depthWrite: false,

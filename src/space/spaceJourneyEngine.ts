@@ -250,7 +250,8 @@ export class SpaceJourneyEngine {
         this.cameraZ,
         time,
         delta,
-        reactive.pulse
+        reactive.pulse,
+        this.camera.position
       );
 
       // Smooth Lighting & Fog transitions matching current biome
