@@ -17,7 +17,6 @@ import {
   Camera,
   ChevronDown,
   ChevronUp,
-  Sparkles,
   Info
 } from 'lucide-react';
 import { SpaceEngineStatus } from '../space/spaceJourneyEngine';
@@ -44,7 +43,6 @@ export const CosmicHud: React.FC<CosmicHudProps> = ({
 }) => {
   const [isDockCollapsed, setIsDockCollapsed] = useState(false);
   const [activeTab, setActiveTab] = useState<'flight' | 'destinations' | 'lore'>('flight');
-  const [hasStartedAudio, setHasStartedAudio] = useState(false);
   const [showScreenshotFlash, setShowScreenshotFlash] = useState(false);
 
   // Keyboard shortcuts
@@ -53,8 +51,7 @@ export const CosmicHud: React.FC<CosmicHudProps> = ({
       if (e.key === 'h' || e.key === 'H') {
         setIsDockCollapsed(prev => !prev);
       } else if (e.key === 'm' || e.key === 'M') {
-        const muted = onToggleAudio();
-        setHasStartedAudio(!muted);
+        onToggleAudio();
       } else if (e.key === '1') {
         onSetSpeed('pause');
       } else if (e.key === '2') {
@@ -71,7 +68,6 @@ export const CosmicHud: React.FC<CosmicHudProps> = ({
 
   const handleAudioButtonClick = () => {
     onToggleAudio();
-    setHasStartedAudio(true);
   };
 
   const handleScreenshot = () => {
@@ -149,19 +145,6 @@ export const CosmicHud: React.FC<CosmicHudProps> = ({
         </div>
       </div>
 
-      {/* Subtle First-Time Audio Start Callout (Disappears once interacted) */}
-      {!hasStartedAudio && isAudioMuted && (
-        <div className="absolute top-24 left-1/2 -translate-x-1/2 bg-black/80 border border-indigo-500/30 rounded-full px-4 py-2 pointer-events-auto flex items-center gap-2.5 text-indigo-200">
-          <Sparkles className="w-3.5 h-3.5 text-indigo-400" />
-          <span>Click anywhere or toggle audio for procedural ambient soundtrack</span>
-          <button
-            onClick={handleAudioButtonClick}
-            className="bg-indigo-600 hover:bg-indigo-500 text-white px-2.5 py-0.5 rounded-full text-[11px] font-sans font-medium transition-colors"
-          >
-            Start Audio
-          </button>
-        </div>
-      )}
 
       {/* Unified Bottom Dock (Collapsible, <= 15% viewport height footprint) */}
       <div

@@ -35,7 +35,7 @@ export class CelestialFactory {
     const palette = gasGiantPalettes[Math.floor(rng() * gasGiantPalettes.length)];
 
     // Part 1: Core Planetary Sphere with Storm Bands
-    const gasGiantTexture = SpaceTextureGenerator.createGasGiantTexture(palette, seed);
+    const gasGiantTexture = SpaceTextureGenerator.createGasGiantTexture(palette, seed % 6);
 
     const planetGeo = new THREE.SphereGeometry(32, 64, 48);
     geometriesToDispose.push(planetGeo);

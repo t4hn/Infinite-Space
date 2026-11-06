@@ -165,7 +165,7 @@ export class SectorManager {
         break;
       }
       case 'asteroid_field': {
-        heroBody = CelestialFactory.createAsteroidField(360, 380);
+        heroBody = CelestialFactory.createAsteroidField(360, 380, index);
         heroBody.group.position.set(0, 0, bodyZ);
         break;
       }
