@@ -7,6 +7,8 @@ import * as THREE from 'three';
 import {
   getSectorIndex,
   getBiomeForSector,
+  calculateJumpTargetZ,
+  mulberry32,
   SECTOR_LENGTH,
   CosmicBiome,
   BIOMES
@@ -27,6 +29,7 @@ export interface SectorInstance {
 export class SectorManager {
   private scene: THREE.Scene;
   private activeSectors: Map<number, SectorInstance> = new Map();
+  private spawnQueue: number[] = [];
   private currentSectorIndex: number = 0;
   private targetFogColor: THREE.Color = new THREE.Color('#0a0518');
   private targetAmbientColor: THREE.Color = new THREE.Color('#7c4dff');
@@ -45,12 +48,23 @@ export class SectorManager {
     const sectorIndex = getSectorIndex(cameraZ, SECTOR_LENGTH);
     this.currentSectorIndex = sectorIndex;
 
-    // Ensure sectors are loaded: current - 1, current, current + 1, current + 2
+    // Ensure sectors are queued: current - 1, current, current + 1, current + 2
     const neededIndices = [sectorIndex - 1, sectorIndex, sectorIndex + 1, sectorIndex + 2];
 
     for (const idx of neededIndices) {
-      if (idx >= 0 && !this.activeSectors.has(idx)) {
-        this.spawnSector(idx);
+      if (idx >= 0 && !this.activeSectors.has(idx) && !this.spawnQueue.includes(idx)) {
+        this.spawnQueue.push(idx);
+      }
+    }
+
+    // Prune queue of items that are no longer in needed range
+    this.spawnQueue = this.spawnQueue.filter(idx => neededIndices.includes(idx));
+
+    // Spawn at most one new sector per frame to avoid hitches after a jump
+    if (this.spawnQueue.length > 0) {
+      const nextIdx = this.spawnQueue.shift()!;
+      if (!this.activeSectors.has(nextIdx)) {
+        this.spawnSector(nextIdx);
       }
     }
 
@@ -85,6 +99,8 @@ export class SectorManager {
 
   private spawnSector(index: number) {
     const biome = getBiomeForSector(index);
+    const rng = mulberry32(index * 997 + 13);
+
     // Sector origin along negative Z
     const sectorOriginZ = -index * SECTOR_LENGTH;
 
@@ -96,7 +112,7 @@ export class SectorManager {
     // 1. Volumetric Nebula formations distributed along cosmic flanks
     const numNebulae = biome.primaryBodyType === 'cosmic_void' ? 2 : 4;
     for (let n = 0; n < numNebulae; n++) {
-      const radius = 260 + Math.random() * 120;
+      const radius = 260 + rng() * 120;
       const nebMesh = createNebulaMesh(
         radius,
         biome.nebulaPrimaryColor,
@@ -106,13 +122,13 @@ export class SectorManager {
 
       // Flank left and right of flight path
       const side = (n % 2 === 0) ? 1 : -1;
-      const offsetX = side * (190 + Math.random() * 160);
-      const offsetY = (Math.random() - 0.5) * 160;
+      const offsetX = side * (190 + rng() * 160);
+      const offsetY = (rng() - 0.5) * 160;
       // Staggered along sector depth
-      const nebZ = -(n * 380 + 200 + Math.random() * 120);
+      const nebZ = -(n * 380 + 200 + rng() * 120);
 
       nebMesh.position.set(offsetX, offsetY, nebZ);
-      nebMesh.rotation.set(Math.random() * Math.PI, Math.random() * Math.PI, 0);
+      nebMesh.rotation.set(rng() * Math.PI, rng() * Math.PI, 0);
 
       group.add(nebMesh);
       nebulae.push(nebMesh);
@@ -203,17 +219,9 @@ export class SectorManager {
   }
 
   public jumpToBiome(targetBiomeId: string, currentCameraZ: number): number {
-    const biomeIndex = BIOMES.findIndex(b => b.id === targetBiomeId);
-    if (biomeIndex === -1) return currentCameraZ;
-
-    // Find the next sector ahead with this biome
-    const curSector = getSectorIndex(currentCameraZ, SECTOR_LENGTH);
-    let targetSector = curSector + 1;
-    while ((targetSector % BIOMES.length) !== biomeIndex) {
-      targetSector++;
-    }
-
-    return -targetSector * SECTOR_LENGTH - 200;
+    const targetZ = calculateJumpTargetZ(targetBiomeId, currentCameraZ, SECTOR_LENGTH);
+    this.spawnQueue = [];
+    return targetZ;
   }
 
   public getTargetLighting() {

@@ -53,7 +53,6 @@ export const NebulaShaderMaterial = {
       vec3 w = fract(x);
       vec3 u = w * w * (3.0 - 2.0 * w);
 
-      float n = p.x + p.y * 157.0 + 113.0 * p.z;
       float a = hash(p);
       float b = hash(p + vec3(1.0, 0.0, 0.0));
       float c = hash(p + vec3(0.0, 1.0, 0.0));
@@ -73,7 +72,7 @@ export const NebulaShaderMaterial = {
     float fbm(vec3 p) {
       float f = 0.0;
       float amp = 0.52;
-      for (int i = 0; i < 4; i++) {
+      for (int i = 0; i < 3; i++) {
         f += noise3D(p) * amp;
         p *= 2.08;
         amp *= 0.48;
@@ -136,7 +135,7 @@ export function createNebulaMesh(
     transparent: true,
     depthWrite: false,
     blending: THREE.AdditiveBlending,
-    side: THREE.DoubleSide
+    side: THREE.FrontSide
   });
 
   const mesh = new THREE.Mesh(geometry, material);

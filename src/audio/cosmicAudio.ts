@@ -29,7 +29,7 @@ class CosmicAudioEngine {
   private noiseGain: GainNode | null = null;
 
   private isRunning: boolean = false;
-  private isMuted: boolean = false;
+  private isMuted: boolean = true;
   private volume: number = 0.6;
   private chimeTimer: number | null = null;
 
@@ -252,12 +252,15 @@ class CosmicAudioEngine {
 
   public toggleMute(): boolean {
     this.isMuted = !this.isMuted;
+    if (!this.isMuted) {
+      if (!this.isRunning) {
+        this.init();
+      }
+      this.resume();
+    }
     if (this.masterGain && this.ctx) {
       const target = this.isMuted ? 0 : this.volume;
       this.masterGain.gain.setTargetAtTime(target, this.ctx.currentTime, 0.05);
-    }
-    if (!this.isRunning && !this.isMuted) {
-      this.init();
     }
     return this.isMuted;
   }

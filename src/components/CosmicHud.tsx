@@ -18,8 +18,7 @@ import {
   ChevronDown,
   ChevronUp,
   Sparkles,
-  Info,
-  Layers
+  Info
 } from 'lucide-react';
 import { SpaceEngineStatus } from '../space/spaceJourneyEngine';
 import { FlightSpeedMode, BIOMES } from '../space/sectorLogic';

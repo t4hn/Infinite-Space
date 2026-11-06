@@ -8,7 +8,9 @@ import {
   getWarpFactor,
   calculateAudioReaction,
   SECTOR_LENGTH,
-  BIOMES
+  BIOMES,
+  mulberry32,
+  calculateJumpTargetZ
 } from './sectorLogic';
 
 test('sector coordinates calculation returns accurate sector index along travel path', () => {
@@ -71,3 +73,45 @@ test('audio reaction correctly boosts ambient intensity within safe bounds', () 
   assert.ok(bassBeat.bloomMultiplier > 1.5);
   assert.ok(bassBeat.chromaticDispersion > 0);
 });
+
+test('mulberry32 generates deterministic pseudorandom numbers within [0, 1)', () => {
+  const seed = 42;
+  const rngA = mulberry32(seed);
+  const rngB = mulberry32(seed);
+
+  const seqA = [rngA(), rngA(), rngA(), rngA(), rngA()];
+  const seqB = [rngB(), rngB(), rngB(), rngB(), rngB()];
+
+  // Same seed produces exactly identical sequences
+  assert.deepEqual(seqA, seqB);
+
+  // Each value is strictly in [0, 1)
+  for (const val of seqA) {
+    assert.ok(val >= 0 && val < 1);
+  }
+
+  // Different seed produces different sequence
+  const rngC = mulberry32(999);
+  const seqC = [rngC(), rngC(), rngC(), rngC(), rngC()];
+  assert.notDeepEqual(seqA, seqC);
+});
+
+test('calculateJumpTargetZ computes correct forward sector for target biome', () => {
+  const currentZ = -1000;
+  const targetBiome = BIOMES[2].id;
+
+  const targetZ = calculateJumpTargetZ(targetBiome, currentZ);
+
+  // Jump is forward along travel path (more negative Z)
+  assert.ok(targetZ < currentZ);
+
+  // Target sector index resolves to the requested biome
+  const targetSector = getSectorIndex(targetZ);
+  const resultingBiome = getBiomeForSector(targetSector);
+  assert.equal(resultingBiome.id, targetBiome);
+
+  // Invalid biome returns the current camera position without moving
+  const unchangedZ = calculateJumpTargetZ('non_existent_biome', currentZ);
+  assert.equal(unchangedZ, currentZ);
+});
+

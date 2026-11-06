@@ -7,6 +7,9 @@ import * as THREE from 'three';
 import { RoomEnvironment } from 'three/examples/jsm/environments/RoomEnvironment.js';
 import { StarfieldManager } from './starfield';
 import { SectorManager } from './sectorManager';
+import { SpaceTextureGenerator } from './proceduralTextures';
+import { createNebulaMesh } from './shaders/nebulaShader';
+import { CelestialFactory } from './celestialBodies';
 import { cosmicAudio } from '../audio/cosmicAudio';
 import {
   FlightSpeedMode,
@@ -50,7 +53,6 @@ export class SpaceJourneyEngine {
   private currentSpeed: number = FLIGHT_SPEED_VALUES.cruise;
 
   // Mouse / Pointer Steering
-  private mouseNorm: THREE.Vector2 = new THREE.Vector2(0, 0);
   private targetCameraRot: THREE.Vector2 = new THREE.Vector2(0, 0);
   private currentCameraRot: THREE.Vector2 = new THREE.Vector2(0, 0);
 
@@ -60,6 +62,7 @@ export class SpaceJourneyEngine {
   private isSoftwareGl: boolean = false;
   private isRunning: boolean = true;
   private animationFrameId: number = 0;
+  private timeoutId: number = 0;
 
   // Status Callback
   private onStatusUpdate?: (status: SpaceEngineStatus) => void;
@@ -68,27 +71,31 @@ export class SpaceJourneyEngine {
     this.container = container;
     this.onStatusUpdate = onStatusUpdate;
 
-    // 1. Detect Software WebGL
+    // 1. Verify WebGL2 support
+    const testCanvas = document.createElement('canvas');
+    const testGl = testCanvas.getContext('webgl2');
+    if (!testGl) {
+      throw new Error('WebGL2 is required');
+    }
+
+    // Detect Software WebGL
     this.isSoftwareGl = (() => {
-      const gl = document.createElement('canvas').getContext('webgl2');
-      if (!gl) return true;
-      const ext = gl.getExtension('WEBGL_debug_renderer_info');
-      const param = ext ? ext.UNMASKED_RENDERER_WEBGL : gl.RENDERER;
-      const gpu = String(gl.getParameter(param));
-      gl.getExtension('WEBGL_lose_context')?.loseContext();
+      const ext = testGl.getExtension('WEBGL_debug_renderer_info');
+      const param = ext ? ext.UNMASKED_RENDERER_WEBGL : testGl.RENDERER;
+      const gpu = String(testGl.getParameter(param));
+      testGl.getExtension('WEBGL_lose_context')?.loseContext();
       return /SwiftShader|llvmpipe|softpipe|Software|Basic Render/i.test(gpu);
     })();
 
     // 2. Initialize Three.js Renderer
     this.renderer = new THREE.WebGLRenderer({
       antialias: !this.isSoftwareGl,
-      powerPreference: 'high-performance',
-      preserveDrawingBuffer: true // Allows clean high-res screenshots
+      powerPreference: 'high-performance'
     });
     this.renderer.outputColorSpace = THREE.SRGBColorSpace;
     this.renderer.toneMapping = THREE.ACESFilmicToneMapping;
     this.renderer.toneMappingExposure = 1.15;
-    this.renderer.setPixelRatio(this.isSoftwareGl ? 1 : Math.min(window.devicePixelRatio, 2));
+    this.renderer.setPixelRatio(this.isSoftwareGl ? 1 : Math.min(window.devicePixelRatio, 1.5));
     this.renderer.setSize(this.container.clientWidth, this.container.clientHeight);
     this.container.appendChild(this.renderer.domElement);
 
@@ -133,8 +140,17 @@ export class SpaceJourneyEngine {
 
     this.sectorManager = new SectorManager(this.scene);
 
-    // 6. Pre-warm shaders
+    // 6. Pre-warm shaders (including custom nebula and black hole shaders)
     if (!this.isSoftwareGl) {
+      const compileScene = new THREE.Scene();
+      const throwawayNebula = createNebulaMesh(300, '#3b82f6', '#ec4899', '#ffffff');
+      const throwawayBlackHole = CelestialFactory.createBlackHole();
+      compileScene.add(throwawayNebula);
+      compileScene.add(throwawayBlackHole.group);
+      this.renderer.compile(compileScene, this.camera);
+      throwawayNebula.geometry.dispose();
+      (throwawayNebula.material as THREE.Material).dispose();
+      throwawayBlackHole.dispose();
       this.renderer.compile(this.scene, this.camera);
     }
 
@@ -162,7 +178,6 @@ export class SpaceJourneyEngine {
     // Map mouse position to -1..1 range
     const nx = (e.clientX / window.innerWidth) * 2 - 1;
     const ny = -(e.clientY / window.innerHeight) * 2 + 1;
-    this.mouseNorm.set(nx, ny);
 
     // Subtle look tilt target (radians)
     this.targetCameraRot.x = ny * 0.22;
@@ -290,25 +305,30 @@ export class SpaceJourneyEngine {
     const poll = () => {
       const state = sync && gl.getSyncParameter(sync, gl.SYNC_STATUS);
       if (state === gl.UNSIGNALED) {
-        this.animationFrameId = window.setTimeout(poll, 5);
+        this.timeoutId = window.setTimeout(poll, 5);
       } else {
         gl.deleteSync(sync);
-        this.animationFrameId = window.setTimeout(cb, 80);
+        this.timeoutId = window.setTimeout(cb, 80);
       }
     };
-    this.animationFrameId = window.setTimeout(poll, 5);
+    this.timeoutId = window.setTimeout(poll, 5);
   }
 
   public dispose() {
     this.isRunning = false;
-    cancelAnimationFrame(this.animationFrameId);
-    clearTimeout(this.animationFrameId);
+    if (this.animationFrameId) {
+      cancelAnimationFrame(this.animationFrameId);
+    }
+    if (this.timeoutId) {
+      clearTimeout(this.timeoutId);
+    }
 
     window.removeEventListener('resize', this.handleResize);
     window.removeEventListener('pointermove', this.handlePointerMove);
 
     this.starfield.dispose();
     this.sectorManager.dispose();
+    SpaceTextureGenerator.disposeAll();
     this.renderer.dispose();
 
     if (this.renderer.domElement && this.renderer.domElement.parentNode) {

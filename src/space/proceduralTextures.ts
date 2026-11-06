@@ -3,6 +3,7 @@
  * 100% in-code generated CanvasTextures with zero external asset dependencies.
  */
 import * as THREE from 'three';
+import { mulberry32 } from './sectorLogic';
 
 export class SpaceTextureGenerator {
   private static cachedTextures: Map<string, THREE.Texture> = new Map();
@@ -10,12 +11,16 @@ export class SpaceTextureGenerator {
   /**
    * Gas Giant texture with turbulent chromatic bands and swirling storms
    */
-  public static createGasGiantTexture(palette: { base: string; bands: string[]; storm: string }): THREE.CanvasTexture {
-    const key = `gas_giant_${palette.base}_${palette.bands.join('_')}`;
+  public static createGasGiantTexture(
+    palette: { base: string; bands: string[]; storm: string },
+    seed: number = 0
+  ): THREE.CanvasTexture {
+    const key = `gas_giant_${seed}_${palette.base}_${palette.bands.join('_')}`;
     if (this.cachedTextures.has(key)) {
       return this.cachedTextures.get(key) as THREE.CanvasTexture;
     }
 
+    const rng = mulberry32(seed * 73 + 19);
     const canvas = document.createElement('canvas');
     canvas.width = 1024;
     canvas.height = 512;
@@ -48,11 +53,11 @@ export class SpaceTextureGenerator {
       ctx.fill();
     }
 
-    // Great atmospheric oval storm
-    const stormX = canvas.width * 0.62;
-    const stormY = canvas.height * 0.58;
-    const stormRadX = 64;
-    const stormRadY = 36;
+    // Great atmospheric oval storm with seed-varied position and size
+    const stormX = canvas.width * (0.35 + rng() * 0.45);
+    const stormY = canvas.height * (0.35 + rng() * 0.35);
+    const stormRadX = 48 + rng() * 32;
+    const stormRadY = 24 + rng() * 20;
 
     const grad = ctx.createRadialGradient(stormX, stormY, 4, stormX, stormY, stormRadX);
     grad.addColorStop(0, '#ffffff');
@@ -62,7 +67,7 @@ export class SpaceTextureGenerator {
 
     ctx.fillStyle = grad;
     ctx.beginPath();
-    ctx.ellipse(stormX, stormY, stormRadX, stormRadY, 0.1, 0, Math.PI * 2);
+    ctx.ellipse(stormX, stormY, stormRadX, stormRadY, (rng() - 0.5) * 0.3, 0, Math.PI * 2);
     ctx.fill();
 
     const texture = new THREE.CanvasTexture(canvas);
@@ -314,5 +319,15 @@ export class SpaceTextureGenerator {
     texture.needsUpdate = true;
     this.cachedTextures.set(key, texture);
     return texture;
+  }
+
+  /**
+   * Disposes all globally cached textures once on application/engine cleanup.
+   */
+  public static disposeAll(): void {
+    for (const texture of this.cachedTextures.values()) {
+      texture.dispose();
+    }
+    this.cachedTextures.clear();
   }
 }

@@ -8,14 +8,11 @@ export interface CosmicBiome {
   name: string;
   description: string;
   fogColor: string;
-  fogDensity: number;
   nebulaPrimaryColor: string;
   nebulaSecondaryColor: string;
   ambientLightColor: string;
   ambientIntensity: number;
   primaryBodyType: 'gas_giant' | 'asteroid_field' | 'singularity' | 'pulsar' | 'terrestrial_planet' | 'space_anomaly' | 'deep_nebula' | 'cosmic_void';
-  starDensity: number;
-  ambientAudioMood: 'ethereal' | 'intense' | 'mysterious' | 'tranquil';
 }
 
 export const BIOMES: CosmicBiome[] = [
@@ -24,112 +21,88 @@ export const BIOMES: CosmicBiome[] = [
     name: 'Orion Stellar Cradle',
     description: 'A brilliant emission nebula dense with glowing ionized gas and newborn protostars.',
     fogColor: '#0a0518',
-    fogDensity: 0.00035,
     nebulaPrimaryColor: '#e040fb',
     nebulaSecondaryColor: '#00e5ff',
     ambientLightColor: '#7c4dff',
     ambientIntensity: 0.85,
-    primaryBodyType: 'deep_nebula',
-    starDensity: 1.4,
-    ambientAudioMood: 'ethereal'
+    primaryBodyType: 'deep_nebula'
   },
   {
     id: 'saturnian_rings',
     name: 'Titanis Ring System',
     description: 'A colossal striped gas giant surrounded by luminous rings and icy moonlets.',
     fogColor: '#060a15',
-    fogDensity: 0.00028,
     nebulaPrimaryColor: '#ffab40',
     nebulaSecondaryColor: '#448aff',
     ambientLightColor: '#ffd180',
     ambientIntensity: 0.9,
-    primaryBodyType: 'gas_giant',
-    starDensity: 1.0,
-    ambientAudioMood: 'tranquil'
+    primaryBodyType: 'gas_giant'
   },
   {
     id: 'asteroid_shoals',
     name: 'Perseus Asteroid Belt',
     description: 'A dense river of tumbling carbonaceous asteroids bathed in distant starlight.',
     fogColor: '#08080c',
-    fogDensity: 0.0003,
     nebulaPrimaryColor: '#ff7043',
     nebulaSecondaryColor: '#26a69a',
     ambientLightColor: '#80cbc4',
     ambientIntensity: 0.7,
-    primaryBodyType: 'asteroid_field',
-    starDensity: 0.9,
-    ambientAudioMood: 'mysterious'
+    primaryBodyType: 'asteroid_field'
   },
   {
     id: 'singularity_rift',
     name: 'Gargantua Singularity',
     description: 'A supermassive rotating black hole flanked by a blinding relativistic accretion disk.',
     fogColor: '#030206',
-    fogDensity: 0.00045,
     nebulaPrimaryColor: '#ff3d00',
     nebulaSecondaryColor: '#7c4dff',
     ambientLightColor: '#ff9100',
     ambientIntensity: 1.1,
-    primaryBodyType: 'singularity',
-    starDensity: 1.2,
-    ambientAudioMood: 'intense'
+    primaryBodyType: 'singularity'
   },
   {
     id: 'pulsar_beacon',
     name: 'Vela Pulsar Array',
     description: 'A rapidly spinning magnetar firing twin relativistic radiation beams across the cosmos.',
     fogColor: '#050c18',
-    fogDensity: 0.00032,
     nebulaPrimaryColor: '#00e676',
     nebulaSecondaryColor: '#00b0ff',
     ambientLightColor: '#69f0ae',
     ambientIntensity: 1.0,
-    primaryBodyType: 'pulsar',
-    starDensity: 1.1,
-    ambientAudioMood: 'intense'
+    primaryBodyType: 'pulsar'
   },
   {
     id: 'ancient_anomaly',
     name: 'Monolith Enclave',
     description: 'A colossal Dyson artifact and ancient precursor beacon resonating with unknown energy.',
     fogColor: '#080410',
-    fogDensity: 0.00025,
     nebulaPrimaryColor: '#d500f9',
     nebulaSecondaryColor: '#651fff',
     ambientLightColor: '#e040fb',
     ambientIntensity: 0.8,
-    primaryBodyType: 'space_anomaly',
-    starDensity: 1.0,
-    ambientAudioMood: 'mysterious'
+    primaryBodyType: 'space_anomaly'
   },
   {
     id: 'terrestrial_oasis',
     name: 'Kepler-452 Exoplanet',
     description: 'A temperate blue-green world with swirling cloud continents and bioluminescent oceans.',
     fogColor: '#040d16',
-    fogDensity: 0.00026,
     nebulaPrimaryColor: '#00b4d8',
     nebulaSecondaryColor: '#90e0ef',
     ambientLightColor: '#48cae4',
     ambientIntensity: 0.95,
-    primaryBodyType: 'terrestrial_planet',
-    starDensity: 1.0,
-    ambientAudioMood: 'tranquil'
+    primaryBodyType: 'terrestrial_planet'
   },
   {
     id: 'bootes_void',
     name: 'Great Bootes Expanse',
     description: 'An immense, quiet void of deep space speckled only with distant, ancient galaxies.',
     fogColor: '#020204',
-    fogDensity: 0.00015,
     nebulaPrimaryColor: '#303f9f',
     nebulaSecondaryColor: '#1a237e',
     ambientLightColor: '#7986cb',
     ambientIntensity: 0.5,
-    primaryBodyType: 'cosmic_void',
-    starDensity: 0.6,
-    ambientAudioMood: 'mysterious'
+    primaryBodyType: 'cosmic_void'
   }
 ];
 
@@ -259,3 +232,24 @@ export function calculateAudioReaction(
     chromaticDispersion
   };
 }
+
+/**
+ * Calculates deterministic target Z coordinate when jumping to a celestial biome.
+ */
+export function calculateJumpTargetZ(
+  targetBiomeId: string,
+  currentCameraZ: number,
+  sectorLength: number = SECTOR_LENGTH
+): number {
+  const biomeIndex = BIOMES.findIndex(b => b.id === targetBiomeId);
+  if (biomeIndex === -1) return currentCameraZ;
+
+  const curSector = getSectorIndex(currentCameraZ, sectorLength);
+  let targetSector = curSector + 1;
+  while ((targetSector % BIOMES.length) !== biomeIndex) {
+    targetSector++;
+  }
+
+  return -targetSector * sectorLength - 200;
+}
+

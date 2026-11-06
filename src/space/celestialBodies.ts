@@ -7,6 +7,7 @@ import * as THREE from 'three';
 import { SpaceTextureGenerator } from './proceduralTextures';
 import { BlackHoleDiskShader, GravitationalLensShader } from './shaders/blackHoleShader';
 import { AtmosphereGlowShader, PulsarJetShader } from './shaders/atmosphereShader';
+import { mulberry32 } from './sectorLogic';
 
 export interface CelestialAnimationTarget {
   group: THREE.Group;
@@ -20,17 +21,21 @@ export class CelestialFactory {
    */
   public static createGasGiant(seed: number = 1): CelestialAnimationTarget {
     const group = new THREE.Group();
-    const texturesToDispose: THREE.Texture[] = [];
     const materialsToDispose: THREE.Material[] = [];
     const geometriesToDispose: THREE.BufferGeometry[] = [];
 
+    const rng = mulberry32(seed * 43 + 17);
+    const gasGiantPalettes = [
+      { base: '#9c4221', bands: ['#d97706', '#b45309', '#f59e0b', '#78350f', '#fde68a', '#92400e'], storm: '#b91c1c' },
+      { base: '#1e3a8a', bands: ['#3b82f6', '#1d4ed8', '#60a5fa', '#172554', '#93c5fd', '#2563eb'], storm: '#38bdf8' },
+      { base: '#064e3b', bands: ['#10b981', '#047857', '#34d399', '#022c22', '#6ee7b7', '#059669'], storm: '#a7f3d0' },
+      { base: '#581c87', bands: ['#a855f7', '#7e22ce', '#c084fc', '#3b0764', '#e9d5ff', '#9333ea'], storm: '#f472b6' },
+      { base: '#831843', bands: ['#ec4899', '#be185d', '#f472b6', '#500724', '#fbcfe8', '#db2777'], storm: '#fb7185' }
+    ];
+    const palette = gasGiantPalettes[Math.floor(rng() * gasGiantPalettes.length)];
+
     // Part 1: Core Planetary Sphere with Storm Bands
-    const gasGiantTexture = SpaceTextureGenerator.createGasGiantTexture({
-      base: '#9c4221',
-      bands: ['#d97706', '#b45309', '#f59e0b', '#78350f', '#fde68a', '#92400e'],
-      storm: '#b91c1c'
-    });
-    texturesToDispose.push(gasGiantTexture);
+    const gasGiantTexture = SpaceTextureGenerator.createGasGiantTexture(palette, seed);
 
     const planetGeo = new THREE.SphereGeometry(32, 64, 48);
     geometriesToDispose.push(planetGeo);
@@ -45,7 +50,6 @@ export class CelestialFactory {
 
     // Part 2: Inner Main Ring Disk
     const ringTex = SpaceTextureGenerator.createRingTexture('#fcd34d', '#78350f');
-    texturesToDispose.push(ringTex);
     const ringGeo = new THREE.RingGeometry(44, 76, 80);
     geometriesToDispose.push(ringGeo);
 
@@ -172,7 +176,6 @@ export class CelestialFactory {
         auroraMat.opacity = 0.45 + Math.sin(time * 3) * 0.2 + audioPulse * 0.35;
       },
       dispose: () => {
-        texturesToDispose.forEach(t => t.dispose());
         geometriesToDispose.forEach(g => g.dispose());
         materialsToDispose.forEach(m => m.dispose());
       }
@@ -184,13 +187,11 @@ export class CelestialFactory {
    */
   public static createTerrestrialWorld(): CelestialAnimationTarget {
     const group = new THREE.Group();
-    const texturesToDispose: THREE.Texture[] = [];
     const materialsToDispose: THREE.Material[] = [];
     const geometriesToDispose: THREE.BufferGeometry[] = [];
 
     // Part 1: Continental / Ocean Crust
     const terrTex = SpaceTextureGenerator.createTerrestrialTexture();
-    texturesToDispose.push(terrTex);
     const crustGeo = new THREE.SphereGeometry(22, 64, 48);
     geometriesToDispose.push(crustGeo);
     const crustMat = new THREE.MeshStandardMaterial({
@@ -204,7 +205,6 @@ export class CelestialFactory {
 
     // Part 2: Swirling Cloud Layer
     const cloudTex = SpaceTextureGenerator.createCloudTexture();
-    texturesToDispose.push(cloudTex);
     const cloudGeo = new THREE.SphereGeometry(22.45, 48, 36);
     geometriesToDispose.push(cloudGeo);
     const cloudMat = new THREE.MeshStandardMaterial({
@@ -298,7 +298,6 @@ export class CelestialFactory {
         polarMat.opacity = 0.35 + audioPulse * 0.4;
       },
       dispose: () => {
-        texturesToDispose.forEach(t => t.dispose());
         geometriesToDispose.forEach(g => g.dispose());
         materialsToDispose.forEach(m => m.dispose());
       }
@@ -674,9 +673,10 @@ export class CelestialFactory {
   /**
    * 6. High-Performance Instanced Asteroid Field (300+ Rocks)
    */
-  public static createAsteroidField(count: number = 320, spread: number = 400): CelestialAnimationTarget {
+  public static createAsteroidField(count: number = 320, spread: number = 400, seed: number = 1): CelestialAnimationTarget {
     const group = new THREE.Group();
     const asteroidGeo = new THREE.DodecahedronGeometry(2.5, 1);
+    const rng = mulberry32(seed * 59 + 23);
     
     // Displace vertices slightly with pseudo noise so asteroids look organic
     const pos = asteroidGeo.attributes.position;
@@ -704,25 +704,25 @@ export class CelestialFactory {
     const speeds: Array<{ rotSpeed: THREE.Vector3; basePos: THREE.Vector3 }> = [];
 
     for (let i = 0; i < count; i++) {
-      const angle = Math.random() * Math.PI * 2;
-      const radius = 60 + Math.random() * (spread - 60);
-      const y = (Math.random() - 0.5) * 80;
+      const angle = rng() * Math.PI * 2;
+      const radius = 60 + rng() * (spread - 60);
+      const y = (rng() - 0.5) * 80;
       const x = Math.cos(angle) * radius;
-      const z = (Math.random() - 0.5) * 600;
+      const z = (rng() - 0.5) * 600;
 
-      const scale = 0.6 + Math.random() * 2.2;
+      const scale = 0.6 + rng() * 2.2;
       dummy.position.set(x, y, z);
-      dummy.rotation.set(Math.random() * Math.PI, Math.random() * Math.PI, Math.random() * Math.PI);
-      dummy.scale.set(scale, scale * (0.8 + Math.random() * 0.4), scale);
+      dummy.rotation.set(rng() * Math.PI, rng() * Math.PI, rng() * Math.PI);
+      dummy.scale.set(scale, scale * (0.8 + rng() * 0.4), scale);
       dummy.updateMatrix();
 
       instancedMesh.setMatrixAt(i, dummy.matrix);
 
       speeds.push({
         rotSpeed: new THREE.Vector3(
-          (Math.random() - 0.5) * 0.8,
-          (Math.random() - 0.5) * 0.8,
-          (Math.random() - 0.5) * 0.8
+          (rng() - 0.5) * 0.8,
+          (rng() - 0.5) * 0.8,
+          (rng() - 0.5) * 0.8
         ),
         basePos: new THREE.Vector3(x, y, z)
       });
@@ -750,7 +750,6 @@ export class CelestialFactory {
       dispose: () => {
         asteroidGeo.dispose();
         asteroidMat.dispose();
-        asteroidTex.dispose();
       }
     };
   }

@@ -30,16 +30,18 @@ export class StarfieldManager {
       4200, 3100           // Class K/M (Amber, Deep Crimson)
     ];
 
+    const boundary = 2800;
+
     // 1. Distant Pinpoint Stars (Always razor-sharp, fills entire cosmos)
     const pinGeo = new THREE.BufferGeometry();
     const pinPos = new Float32Array(this.pinCount * 3);
     const pinCols = new Float32Array(this.pinCount * 3);
 
     for (let i = 0; i < this.pinCount; i++) {
-      // Full volume around camera line of sight (x: -900..900, y: -600..600, z: -3500..500)
       const x = (Math.random() - 0.5) * 1800;
       const y = (Math.random() - 0.5) * 1200;
-      const z = -Math.random() * 3200;
+      // Match initial Z range to wrap boundary [-2700, 100]
+      const z = 100 - Math.random() * boundary;
 
       pinPos[i * 3] = x;
       pinPos[i * 3 + 1] = y;
@@ -77,7 +79,8 @@ export class StarfieldManager {
       const radius = 25 + Math.pow(Math.random(), 0.7) * 450;
       const x = Math.cos(angle) * radius;
       const y = Math.sin(angle) * (radius * 0.7);
-      const z = -Math.random() * 2400;
+      // Match initial Z range to wrap boundary [-2720, 80]
+      const z = 80 - Math.random() * boundary;
 
       clusterPos[i * 3] = x;
       clusterPos[i * 3 + 1] = y;
@@ -110,13 +113,14 @@ export class StarfieldManager {
     // 3. High-Velocity Warp Streaks
     this.streakPositions = new Float32Array(this.streakCount * 6);
     const streakColors = new Float32Array(this.streakCount * 6);
+    const streakRange = 900;
 
     for (let i = 0; i < this.streakCount; i++) {
       const angle = Math.random() * Math.PI * 2;
       const radius = 15 + Math.pow(Math.random(), 0.8) * 200;
       const x = Math.cos(angle) * radius;
       const y = Math.sin(angle) * radius;
-      const z = -Math.random() * 1200;
+      const z = 50 - Math.random() * streakRange;
 
       this.streakPositions[i * 6] = x;
       this.streakPositions[i * 6 + 1] = y;
@@ -223,50 +227,45 @@ export class StarfieldManager {
 
   public update(cameraZ: number, warpSpeed: number, delta: number, audioPulse: number) {
     const boundary = 2800;
+    const pinLead = 100;
 
-    // 1. Recycle Pinpoint Stars
+    // 1. Recycle Pinpoint Stars with modulo wrapping
     const pinPos = this.pinStars.geometry.attributes.position.array as Float32Array;
+    const pinTargetZ = cameraZ + pinLead;
     for (let i = 0; i < this.pinCount; i++) {
-      let z = pinPos[i * 3 + 2];
-      if (z > cameraZ + 100) {
-        z -= boundary;
-        pinPos[i * 3 + 2] = z;
-      } else if (z < cameraZ - boundary) {
-        z += boundary;
-        pinPos[i * 3 + 2] = z;
-      }
+      const z = pinPos[i * 3 + 2];
+      const offset = ((z - pinTargetZ) % boundary + boundary) % boundary - boundary;
+      pinPos[i * 3 + 2] = pinTargetZ + offset;
     }
     this.pinStars.geometry.attributes.position.needsUpdate = true;
 
     // 2. Recycle Cluster Stars & Audio Twinkle
+    const clusterLead = 80;
+    const clusterTargetZ = cameraZ + clusterLead;
     const clusterPos = this.clusterStars.geometry.attributes.position.array as Float32Array;
     for (let i = 0; i < this.clusterCount; i++) {
-      let z = clusterPos[i * 3 + 2];
-      if (z > cameraZ + 80) {
-        z -= boundary;
-        clusterPos[i * 3 + 2] = z;
-      } else if (z < cameraZ - boundary) {
-        z += boundary;
-        clusterPos[i * 3 + 2] = z;
-      }
+      const z = clusterPos[i * 3 + 2];
+      const offset = ((z - clusterTargetZ) % boundary + boundary) % boundary - boundary;
+      clusterPos[i * 3 + 2] = clusterTargetZ + offset;
     }
     this.clusterStars.geometry.attributes.position.needsUpdate = true;
 
     const clusterMat = this.clusterStars.material as THREE.PointsMaterial;
-    clusterMat.size = 22 + audioPulse * 12;
+    clusterMat.size = 14 + audioPulse * 8;
 
-    // 3. Warp Streaks: expand length and opacity with speed
+    // 3. Warp Streaks with modulo wrapping: expand length and opacity with speed
     const streakPositions = this.streakPositions;
     const streakRange = 900;
+    const streakLead = 50;
+    const streakTargetZ = cameraZ + streakLead;
     const streakLength = Math.max(8.0, warpSpeed * 0.85);
 
     for (let i = 0; i < this.streakCount; i++) {
-      let z = streakPositions[i * 6 + 2];
-      if (z > cameraZ + 50) {
-        z = cameraZ - streakRange - Math.random() * 200;
-      }
-      streakPositions[i * 6 + 2] = z;
-      streakPositions[i * 6 + 5] = z + streakLength;
+      const z = streakPositions[i * 6 + 2];
+      const offset = ((z - streakTargetZ) % streakRange + streakRange) % streakRange - streakRange;
+      const newZ = streakTargetZ + offset;
+      streakPositions[i * 6 + 2] = newZ;
+      streakPositions[i * 6 + 5] = newZ + streakLength;
     }
     this.streakStars.geometry.attributes.position.needsUpdate = true;
 
