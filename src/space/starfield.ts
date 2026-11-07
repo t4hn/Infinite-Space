@@ -26,6 +26,7 @@ export class StarfieldManager {
     baseZOffset: number;
   }> = [];
   private currentDensity: number = 1.0;
+  private starMultiplier: number = 1.0;
 
   constructor() {
     this.group = new THREE.Group();
@@ -242,6 +243,10 @@ export class StarfieldManager {
     return this.group;
   }
 
+  public setStarMultiplier(multiplier: number): void {
+    this.starMultiplier = Math.max(0.1, multiplier);
+  }
+
   public update(
     cameraZ: number,
     warpSpeed: number,
@@ -253,11 +258,11 @@ export class StarfieldManager {
     const lerpSpeed = Math.min(1.0, delta * 2.5);
     this.currentDensity = THREE.MathUtils.lerp(this.currentDensity, targetDensity, lerpSpeed);
 
-    // Apply starDensity to pin and cluster stars with geometry.setDrawRange(0, floor(total * density / 1.4))
-    const pinDrawCount = Math.floor(this.pinCount * (this.currentDensity / 1.4));
+    // Apply starDensity and starMultiplier to pin and cluster stars
+    const pinDrawCount = Math.floor(this.pinCount * (this.currentDensity / 1.4) * this.starMultiplier);
     this.pinStars.geometry.setDrawRange(0, Math.max(100, Math.min(this.pinCount, pinDrawCount)));
 
-    const clusterDrawCount = Math.floor(this.clusterCount * (this.currentDensity / 1.4));
+    const clusterDrawCount = Math.floor(this.clusterCount * (this.currentDensity / 1.4) * this.starMultiplier);
     this.clusterStars.geometry.setDrawRange(0, Math.max(100, Math.min(this.clusterCount, clusterDrawCount)));
 
     const boundary = 2800;

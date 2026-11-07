@@ -5,6 +5,8 @@
  */
 import * as THREE from 'three';
 
+export const sharedNebulaDetail = { value: 1.0 };
+
 export const NebulaShaderMaterial = {
   uniforms: {
     uTime: { value: 0 },
@@ -14,7 +16,8 @@ export const NebulaShaderMaterial = {
     uAudioPulse: { value: 0.0 },
     uDensity: { value: 0.85 },
     uNoiseScale: { value: 0.004 },
-    uRadius: { value: 300.0 }
+    uRadius: { value: 300.0 },
+    uDetail: sharedNebulaDetail
   },
   vertexShader: `
     varying vec2 vUv;
@@ -40,6 +43,7 @@ export const NebulaShaderMaterial = {
     uniform float uDensity;
     uniform float uNoiseScale;
     uniform float uRadius;
+    uniform float uDetail;
 
     varying vec2 vUv;
     varying vec3 vWorldPosition;
@@ -92,7 +96,7 @@ export const NebulaShaderMaterial = {
       p.z += t;
 
       float n1 = fbm(p);
-      float n2 = fbm(p * 1.6 + vec3(3.7, -t * 0.4, 1.9));
+      float n2 = uDetail > 0.5 ? fbm(p * 1.6 + vec3(3.7, -t * 0.4, 1.9)) : n1;
 
       // Billowy density with smooth edge falloff
       float density = smoothstep(0.26, 0.72, n1 + n2 * 0.3) * uDensity;
@@ -145,7 +149,8 @@ export function createNebulaMesh(
       uAudioPulse: { value: 0.0 },
       uDensity: { value: 0.52 },
       uNoiseScale: { value: 1.0 / (radius * 0.5) },
-      uRadius: { value: radius }
+      uRadius: { value: radius },
+      uDetail: sharedNebulaDetail
     },
     transparent: true,
     depthWrite: false,

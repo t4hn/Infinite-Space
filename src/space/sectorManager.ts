@@ -14,7 +14,7 @@ import {
   BIOMES
 } from './sectorLogic';
 import { CelestialFactory, CelestialAnimationTarget } from './celestialBodies';
-import { createNebulaMesh } from './shaders/nebulaShader';
+import { createNebulaMesh, sharedNebulaDetail } from './shaders/nebulaShader';
 
 export interface SectorInstance {
   index: number;
@@ -35,8 +35,24 @@ export class SectorManager {
   private targetAmbientColor: THREE.Color = new THREE.Color('#7c4dff');
   private targetAmbientIntensity: number = 0.85;
 
+  private reducedNebulaDetail: boolean = false;
+  private hideHalfNebulae: boolean = false;
+
   constructor(scene: THREE.Scene) {
     this.scene = scene;
+  }
+
+  public setNebulaQuality(reducedDetail: boolean, hideHalfNebulae: boolean): void {
+    this.reducedNebulaDetail = reducedDetail;
+    this.hideHalfNebulae = hideHalfNebulae;
+    // Shared uniform updates all nebula materials simultaneously
+    sharedNebulaDetail.value = reducedDetail ? 0.0 : 1.0;
+
+    for (const sector of this.activeSectors.values()) {
+      sector.nebulae.forEach((nebula, idx) => {
+        nebula.visible = hideHalfNebulae ? (idx % 2 === 0) : true;
+      });
+    }
   }
 
   public update(
@@ -130,6 +146,8 @@ export class SectorManager {
 
       nebMesh.position.set(offsetX, offsetY, nebZ);
       nebMesh.rotation.set(rng() * Math.PI, rng() * Math.PI, 0);
+
+      nebMesh.visible = this.hideHalfNebulae ? (n % 2 === 0) : true;
 
       group.add(nebMesh);
       nebulae.push(nebMesh);

@@ -3,7 +3,7 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 import React, { useEffect, useRef, useState, useCallback } from 'react';
-import { SpaceJourneyEngine, SpaceEngineStatus } from './space/spaceJourneyEngine';
+import { SpaceJourneyEngine, SpaceEngineStatus, EngineDebugStats } from './space/spaceJourneyEngine';
 import { CosmicHud } from './components/CosmicHud';
 import { cosmicAudio } from './audio/cosmicAudio';
 import { FlightSpeedMode } from './space/sectorLogic';
@@ -17,6 +17,12 @@ export default function App() {
   const [webGlError, setWebGlError] = useState<string | null>(null);
   const [isZenMode, setIsZenMode] = useState<boolean>(false);
   const [showExitZenPill, setShowExitZenPill] = useState<boolean>(false);
+  const [isDebugVisible, setIsDebugVisible] = useState<boolean>(() => {
+    if (typeof window === 'undefined') return false;
+    const urlParams = new URLSearchParams(window.location.search);
+    return urlParams.has('debug');
+  });
+  const [debugStats, setDebugStats] = useState<EngineDebugStats | null>(null);
   const exitZenTimerRef = useRef<number | null>(null);
   const pointerStartRef = useRef<{ x: number; y: number; time: number } | null>(null);
 
@@ -136,6 +142,33 @@ export default function App() {
     };
   }, []);
 
+  // Hotkey 'F' toggles debug overlay
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'f' || e.key === 'F') {
+        setIsDebugVisible((prev) => !prev);
+      }
+    };
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, []);
+
+  // Poll engine every 500ms only while debug overlay is visible
+  useEffect(() => {
+    if (!isDebugVisible) {
+      setDebugStats(null);
+      return;
+    }
+    const poll = () => {
+      if (engineRef.current) {
+        setDebugStats(engineRef.current.getDebugStats());
+      }
+    };
+    poll();
+    const interval = window.setInterval(poll, 500);
+    return () => window.clearInterval(interval);
+  }, [isDebugVisible]);
+
   if (webGlError) {
     return (
       <div className="flex items-center justify-center w-screen h-screen bg-[#070312] text-white p-6">
@@ -165,6 +198,23 @@ export default function App() {
         ref={canvasMountRef}
         className="absolute inset-0 w-full h-full cursor-grab active:cursor-grabbing"
       />
+
+      {/* Telemetry Debug Overlay (top-left, visible via ?debug or F key) */}
+      {isDebugVisible && debugStats && (
+        <div
+          className="fixed top-3 left-3 z-50 pointer-events-none select-none font-mono text-[11px] leading-tight bg-black/85 text-emerald-400 p-2.5 rounded border border-white/15 shadow-xl space-y-1"
+          data-testid="debug-stats-overlay"
+        >
+          <div className="text-[10px] uppercase font-bold text-white/60 tracking-wider">AETHERIA TELEMETRY</div>
+          <div>FPS: {debugStats.fps}</div>
+          <div>TIER: {debugStats.tier.toUpperCase()}</div>
+          <div>DPR: {debugStats.pixelRatio.toFixed(2)}</div>
+          <div>CALLS: {debugStats.drawCalls}</div>
+          <div>TRIS: {debugStats.triangles.toLocaleString()}</div>
+          <div>GEOM: {debugStats.geometries}</div>
+          <div>TEX: {debugStats.textures}</div>
+        </div>
+      )}
 
       {/* Zero-occlusion HUD & Collapsible Bottom Dock */}
       <CosmicHud

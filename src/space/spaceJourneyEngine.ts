@@ -20,6 +20,7 @@ import {
   getSectorProgress,
   SECTOR_LENGTH
 } from './sectorLogic';
+import { QualityGovernor, QualityTier } from './qualityGovernor';
 
 export interface SpaceEngineStatus {
   sectorIndex: number;
@@ -31,6 +32,16 @@ export interface SpaceEngineStatus {
   audioPulse: number;
 }
 
+export interface EngineDebugStats {
+  fps: number;
+  tier: QualityTier;
+  pixelRatio: number;
+  drawCalls: number;
+  triangles: number;
+  geometries: number;
+  textures: number;
+}
+
 export class SpaceJourneyEngine {
   private container: HTMLElement;
   private renderer: THREE.WebGLRenderer;
@@ -40,6 +51,11 @@ export class SpaceJourneyEngine {
   // Scene Components
   private starfield: StarfieldManager;
   private sectorManager: SectorManager;
+
+  // Adaptive Quality
+  private governor?: QualityGovernor;
+  private currentTier: QualityTier = 'high';
+  private currentFps: number = 60;
 
   // Lighting
   private ambientLight: THREE.AmbientLight;
@@ -61,8 +77,10 @@ export class SpaceJourneyEngine {
   private startTimeMs: number = 0;
   private isSoftwareGl: boolean = false;
   private isRunning: boolean = true;
+  private isPageVisible: boolean = true;
   private animationFrameId: number = 0;
   private timeoutId: number = 0;
+  private lastStatusTime: number = 0;
 
   // Status Callback
   private onStatusUpdate?: (status: SpaceEngineStatus) => void;
@@ -87,9 +105,14 @@ export class SpaceJourneyEngine {
       return /SwiftShader|llvmpipe|softpipe|Software|Basic Render/i.test(gpu);
     })();
 
+    // Detect touch / coarse pointer devices
+    const isCoarse = typeof window !== 'undefined' &&
+      typeof window.matchMedia === 'function' &&
+      window.matchMedia('(pointer: coarse)').matches;
+
     // 2. Initialize Three.js Renderer
     this.renderer = new THREE.WebGLRenderer({
-      antialias: !this.isSoftwareGl,
+      antialias: !this.isSoftwareGl && !isCoarse,
       powerPreference: 'high-performance'
     });
     this.renderer.outputColorSpace = THREE.SRGBColorSpace;
@@ -154,15 +177,58 @@ export class SpaceJourneyEngine {
       this.renderer.compile(this.scene, this.camera);
     }
 
-    // 7. Event Listeners
+    // 7. Initialize Adaptive Quality
+    const startingTier: QualityTier = this.isSoftwareGl ? 'low' : (isCoarse ? 'medium' : 'high');
+
+    if (!this.isSoftwareGl) {
+      this.governor = new QualityGovernor(startingTier);
+    }
+    this.applyTier(startingTier);
+
+    // 8. Event Listeners
     window.addEventListener('resize', this.handleResize);
     window.addEventListener('pointermove', this.handlePointerMove);
+    document.addEventListener('visibilitychange', this.handleVisibilityChange);
 
     this.startTimeMs = performance.now();
     this.lastTimeMs = this.startTimeMs;
 
     // Start loop
     this.startLoop();
+  }
+
+  public applyTier(tier: QualityTier): void {
+    this.currentTier = tier;
+    let pixelRatio = 1.0;
+    let reducedNebula = false;
+    let hideHalfNebulae = false;
+    let starMultiplier = 1.0;
+
+    switch (tier) {
+      case 'high':
+        pixelRatio = Math.min(window.devicePixelRatio || 1, 1.5);
+        reducedNebula = false;
+        hideHalfNebulae = false;
+        starMultiplier = 1.0;
+        break;
+      case 'medium':
+        pixelRatio = 1.0;
+        reducedNebula = true;
+        hideHalfNebulae = false;
+        starMultiplier = 0.8;
+        break;
+      case 'low':
+        pixelRatio = 0.75;
+        reducedNebula = true;
+        hideHalfNebulae = true;
+        starMultiplier = 0.6;
+        break;
+    }
+
+    this.renderer.setPixelRatio(pixelRatio);
+    this.renderer.setSize(this.container.clientWidth, this.container.clientHeight, false);
+    this.sectorManager.setNebulaQuality(reducedNebula, hideHalfNebulae);
+    this.starfield.setStarMultiplier(starMultiplier);
   }
 
   private handleResize = () => {
@@ -202,107 +268,153 @@ export class SpaceJourneyEngine {
     return this.renderer.domElement.toDataURL('image/png');
   }
 
-  private startLoop() {
-    let lastStatusTime = 0;
-
-    const tick = () => {
-      if (!this.isRunning) return;
-
-      const now = performance.now();
-      const rawDelta = (now - this.lastTimeMs) / 1000;
-      this.lastTimeMs = now;
-      const delta = Math.min(rawDelta > 0 ? rawDelta : 0.016, 0.08);
-      const time = (now - this.startTimeMs) / 1000;
-
-      // Exponential smooth damping for speed transition
-      this.currentSpeed = THREE.MathUtils.damp(this.currentSpeed, this.targetSpeed, 4.0, delta);
-
-      // Travel forward along negative Z
-      this.cameraZ -= this.currentSpeed * delta;
-      this.camera.position.z = this.cameraZ;
-
-      // Organic camera zero-gravity drift
-      const driftX = Math.sin(time * 0.35) * 4.5 + Math.cos(time * 0.18) * 2.0;
-      const driftY = Math.cos(time * 0.28) * 3.5 + Math.sin(time * 0.12) * 1.5;
-      this.camera.position.x = driftX;
-      this.camera.position.y = driftY;
-
-      // Smooth camera look damping
-      this.currentCameraRot.x = THREE.MathUtils.damp(this.currentCameraRot.x, this.targetCameraRot.x, 3.5, delta);
-      this.currentCameraRot.y = THREE.MathUtils.damp(this.currentCameraRot.y, this.targetCameraRot.y, 3.5, delta);
-
-      // Camera roll based on yaw
-      const rollZ = -this.currentCameraRot.y * 0.35 + Math.sin(time * 0.2) * 0.02;
-      this.camera.rotation.set(this.currentCameraRot.x, this.currentCameraRot.y, rollZ, 'YXZ');
-
-      // Key light travels ahead of camera to illuminate upcoming celestial bodies
-      this.keyDirectionalLight.position.set(driftX + 120, driftY + 80, this.cameraZ - 350);
-
-      // Audio analysis
-      const reactive = cosmicAudio.getReactiveMetrics();
-      const reaction = calculateAudioReaction(reactive.bass, reactive.treble, 1.0);
-
-      // Update Sector Manager & Biomes
-      const { currentBiome, sectorIndex } = this.sectorManager.update(
-        this.cameraZ,
-        time,
-        delta,
-        reactive.pulse,
-        this.camera.position
-      );
-
-      // Update Starfield with biome starDensity
-      this.starfield.update(
-        this.cameraZ,
-        this.currentSpeed,
-        delta,
-        reactive.pulse,
-        currentBiome.starDensity
-      );
-
-      // Smooth Lighting & Fog transitions matching current biome
-      const targetLighting = this.sectorManager.getTargetLighting();
-      const fog = this.scene.fog as THREE.FogExp2;
-      if (fog) {
-        fog.color.lerp(targetLighting.fogColor, delta * 1.5);
-        this.renderer.setClearColor(fog.color);
+  private handleVisibilityChange = () => {
+    if (document.hidden) {
+      this.isPageVisible = false;
+      if (this.animationFrameId) {
+        cancelAnimationFrame(this.animationFrameId);
+        this.animationFrameId = 0;
       }
-
-      this.ambientLight.color.lerp(targetLighting.ambientColor, delta * 1.5);
-      // Reactive ambient lighting pulsing in sync with procedural audio
-      this.ambientLight.intensity = targetLighting.ambientIntensity * reaction.pulsedIntensity;
-
-      // Render scene
-      this.renderer.render(this.scene, this.camera);
-
-      // Periodic status dispatch for HUD (throttled to 10Hz to prevent React thrashing)
-      if (time - lastStatusTime > 0.1 && this.onStatusUpdate) {
-        lastStatusTime = time;
-        const distLy = Math.abs(this.cameraZ) / 38; // 1 Light Year = ~38 scene units
-        this.onStatusUpdate({
-          sectorIndex,
-          sectorProgress: getSectorProgress(this.cameraZ, SECTOR_LENGTH),
-          currentBiome,
-          speedMode: this.speedMode,
-          speedUnits: Math.round(this.currentSpeed),
-          distanceTraveledLy: Math.round(distLy * 10) / 10,
-          audioPulse: reactive.pulse
-        });
+      if (this.timeoutId) {
+        clearTimeout(this.timeoutId);
+        this.timeoutId = 0;
       }
-
-      // Safe scheduling: afterDraw on software WebGL, requestAnimationFrame on GPU
-      if (this.isSoftwareGl) {
-        this.afterDraw(tick);
-      } else {
-        this.animationFrameId = requestAnimationFrame(tick);
-      }
-    };
-
-    if (this.isSoftwareGl) {
-      this.afterDraw(tick);
     } else {
-      this.animationFrameId = requestAnimationFrame(tick);
+      if (!this.isRunning) return;
+      this.isPageVisible = true;
+      // Reset clock so no huge delta is produced upon resume
+      this.lastTimeMs = performance.now();
+      this.scheduleNextFrame();
     }
+  };
+
+  private scheduleNextFrame = () => {
+    if (!this.isRunning || !this.isPageVisible) return;
+    if (this.isSoftwareGl) {
+      this.afterDraw(this.tick);
+    } else {
+      this.animationFrameId = requestAnimationFrame(this.tick);
+    }
+  };
+
+  private tick = () => {
+    if (!this.isRunning || !this.isPageVisible) return;
+
+    const now = performance.now();
+    const rawDelta = (now - this.lastTimeMs) / 1000;
+    this.lastTimeMs = now;
+    // Clamp delta to at most 0.1s in the main tick
+    const delta = Math.min(rawDelta > 0 ? rawDelta : 0.016, 0.1);
+    const time = (now - this.startTimeMs) / 1000;
+
+    // Smooth FPS tracking for debug telemetry
+    if (rawDelta > 0 && rawDelta < 0.25) {
+      const instantFps = 1 / rawDelta;
+      this.currentFps = THREE.MathUtils.lerp(this.currentFps, instantFps, 0.08);
+    }
+
+    // Adaptive quality governor update
+    if (this.governor) {
+      const newTier = this.governor.update(rawDelta, time);
+      if (newTier) {
+        this.applyTier(newTier);
+      }
+    }
+
+    // Exponential smooth damping for speed transition
+    this.currentSpeed = THREE.MathUtils.damp(this.currentSpeed, this.targetSpeed, 4.0, delta);
+
+    // Travel forward along negative Z
+    this.cameraZ -= this.currentSpeed * delta;
+    this.camera.position.z = this.cameraZ;
+
+    // Organic camera zero-gravity drift
+    const driftX = Math.sin(time * 0.35) * 4.5 + Math.cos(time * 0.18) * 2.0;
+    const driftY = Math.cos(time * 0.28) * 3.5 + Math.sin(time * 0.12) * 1.5;
+    this.camera.position.x = driftX;
+    this.camera.position.y = driftY;
+
+    // Smooth camera look damping
+    this.currentCameraRot.x = THREE.MathUtils.damp(this.currentCameraRot.x, this.targetCameraRot.x, 3.5, delta);
+    this.currentCameraRot.y = THREE.MathUtils.damp(this.currentCameraRot.y, this.targetCameraRot.y, 3.5, delta);
+
+    // Camera roll based on yaw
+    const rollZ = -this.currentCameraRot.y * 0.35 + Math.sin(time * 0.2) * 0.02;
+    this.camera.rotation.set(this.currentCameraRot.x, this.currentCameraRot.y, rollZ, 'YXZ');
+
+    // Key light travels ahead of camera to illuminate upcoming celestial bodies
+    this.keyDirectionalLight.position.set(driftX + 120, driftY + 80, this.cameraZ - 350);
+
+    // Audio analysis
+    const reactive = cosmicAudio.getReactiveMetrics();
+    const reaction = calculateAudioReaction(reactive.bass, reactive.treble, 1.0);
+
+    // Update Sector Manager & Biomes
+    const { currentBiome, sectorIndex } = this.sectorManager.update(
+      this.cameraZ,
+      time,
+      delta,
+      reactive.pulse,
+      this.camera.position
+    );
+
+    // Update Starfield with biome starDensity
+    this.starfield.update(
+      this.cameraZ,
+      this.currentSpeed,
+      delta,
+      reactive.pulse,
+      currentBiome.starDensity
+    );
+
+    // Smooth Lighting & Fog transitions matching current biome
+    const targetLighting = this.sectorManager.getTargetLighting();
+    const fog = this.scene.fog as THREE.FogExp2;
+    if (fog) {
+      fog.color.lerp(targetLighting.fogColor, delta * 1.5);
+      this.renderer.setClearColor(fog.color);
+    }
+
+    this.ambientLight.color.lerp(targetLighting.ambientColor, delta * 1.5);
+    // Reactive ambient lighting pulsing in sync with procedural audio
+    this.ambientLight.intensity = targetLighting.ambientIntensity * reaction.pulsedIntensity;
+
+    // Render scene
+    this.renderer.render(this.scene, this.camera);
+
+    // Periodic status dispatch for HUD (throttled to 10Hz to prevent React thrashing)
+    if (time - this.lastStatusTime > 0.1 && this.onStatusUpdate) {
+      this.lastStatusTime = time;
+      const distLy = Math.abs(this.cameraZ) / 38; // 1 Light Year = ~38 scene units
+      this.onStatusUpdate({
+        sectorIndex,
+        sectorProgress: getSectorProgress(this.cameraZ, SECTOR_LENGTH),
+        currentBiome,
+        speedMode: this.speedMode,
+        speedUnits: Math.round(this.currentSpeed),
+        distanceTraveledLy: Math.round(distLy * 10) / 10,
+        audioPulse: reactive.pulse
+      });
+    }
+
+    // Safe scheduling: afterDraw on software WebGL, requestAnimationFrame on GPU
+    this.scheduleNextFrame();
+  };
+
+  private startLoop() {
+    this.scheduleNextFrame();
+  }
+
+  public getDebugStats(): EngineDebugStats {
+    return {
+      fps: Math.round(this.currentFps),
+      tier: this.currentTier,
+      pixelRatio: Number(this.renderer.getPixelRatio().toFixed(2)),
+      drawCalls: this.renderer.info.render.calls,
+      triangles: this.renderer.info.render.triangles,
+      geometries: this.renderer.info.memory.geometries,
+      textures: this.renderer.info.memory.textures
+    };
   }
 
   private afterDraw(cb: () => void) {
@@ -323,15 +435,19 @@ export class SpaceJourneyEngine {
 
   public dispose() {
     this.isRunning = false;
+    this.isPageVisible = false;
     if (this.animationFrameId) {
       cancelAnimationFrame(this.animationFrameId);
+      this.animationFrameId = 0;
     }
     if (this.timeoutId) {
       clearTimeout(this.timeoutId);
+      this.timeoutId = 0;
     }
 
     window.removeEventListener('resize', this.handleResize);
     window.removeEventListener('pointermove', this.handlePointerMove);
+    document.removeEventListener('visibilitychange', this.handleVisibilityChange);
 
     this.starfield.dispose();
     this.sectorManager.dispose();
