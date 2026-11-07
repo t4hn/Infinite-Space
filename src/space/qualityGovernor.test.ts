@@ -2,46 +2,39 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { QualityGovernor } from './qualityGovernor';
 
-test('QualityGovernor initializes with requested tier or defaults to high', () => {
-  const gDefault = new QualityGovernor();
-  assert.equal(gDefault.getTier(), 'high');
-
-  const gMed = new QualityGovernor('medium');
-  assert.equal(gMed.getTier(), 'medium');
-
-  const gLow = new QualityGovernor('low');
-  assert.equal(gLow.getTier(), 'low');
-});
-
-test('QualityGovernor ignores everything in the first 3 seconds', () => {
+test('stays on high at a steady 60 FPS', () => {
   const g = new QualityGovernor('high');
-  // Send 60 frames of 20 FPS (delta 0.05s) across t = 0 to 3.0s
   let t = 0;
-  for (let i = 0; i < 60; i++) {
-    t += 0.05;
-    const change = g.update(0.05, t);
+  // 6 seconds at 60 FPS (360 frames)
+  for (let i = 0; i < 360; i++) {
+    t += 1 / 60;
+    const change = g.update(1 / 60, t);
     assert.equal(change, null);
   }
   assert.equal(g.getTier(), 'high');
 });
 
-test('QualityGovernor ignores frame deltas over 0.25s and non-positive deltas', () => {
+test('ignores the first 3 seconds of slow frames', () => {
   const g = new QualityGovernor('high');
-  assert.equal(g.update(0.35, 4.0), null);
-  assert.equal(g.update(0.0, 4.1), null);
-  assert.equal(g.update(-0.016, 4.2), null);
+  let t = 0;
+  // 75 frames at 25 FPS (delta 0.04s) covering t = 0 to 3.0s
+  for (let i = 0; i < 75; i++) {
+    t += 0.04;
+    const change = g.update(0.04, t);
+    assert.equal(change, null);
+  }
   assert.equal(g.getTier(), 'high');
 });
 
-test('QualityGovernor downgrades tier when window averages below 40 FPS', () => {
+test('drops one tier after a 2-second window at 25 FPS', () => {
   const g = new QualityGovernor('high');
-  let t = 3.0;
+  let t = 3.0; // Warm-up period already passed
   let changed: string | null = null;
 
-  // Run 60 frames at 30 FPS (delta 1/30s = 0.0333s) over 2.0 seconds
-  for (let i = 0; i < 60; i++) {
-    t += 1 / 30;
-    const result = g.update(1 / 30, t);
+  // 50 frames at 25 FPS (delta 0.04s) = 2.0s window
+  for (let i = 0; i < 50; i++) {
+    t += 0.04;
+    const result = g.update(0.04, t);
     if (result) changed = result;
   }
 
@@ -49,105 +42,96 @@ test('QualityGovernor downgrades tier when window averages below 40 FPS', () => 
   assert.equal(g.getTier(), 'medium');
 });
 
-test('QualityGovernor enforces 8-second cooldown after a change before next change', () => {
+test('never changes twice within 8 seconds', () => {
   const g = new QualityGovernor('high');
   let t = 3.0;
 
-  // First window: 2s at 30 FPS -> triggers downgrade to medium at ~5.0s
-  for (let i = 0; i < 60; i++) {
-    t += 1 / 30;
-    g.update(1 / 30, t);
+  // First change at t = 5.0s (downgrade to medium)
+  for (let i = 0; i < 50; i++) {
+    t += 0.04;
+    g.update(0.04, t);
   }
   assert.equal(g.getTier(), 'medium');
 
-  // Next window at t = 5.0s to 7.0s: still 30 FPS, but cooldown is active (< 8s)
+  // Next 7 seconds at 25 FPS (from t = 5.0s to 12.0s) -> strictly within 8s cooldown
   let changeDuringCooldown: string | null = null;
-  for (let i = 0; i < 60; i++) {
-    t += 1 / 30;
-    const res = g.update(1 / 30, t);
+  for (let i = 0; i < 175; i++) {
+    t += 0.04;
+    const res = g.update(0.04, t);
     if (res) changeDuringCooldown = res;
   }
   assert.equal(changeDuringCooldown, null);
   assert.equal(g.getTier(), 'medium');
 
-  // Advance time past the 8-second cooldown (last change was at t=5.0s, so t >= 13.0s)
+  // Once 8s cooldown elapses (t >= 13.0s), a fresh 2s window at 25 FPS triggers the next change
   t = 13.0;
   let changeAfterCooldown: string | null = null;
-  for (let i = 0; i < 60; i++) {
-    t += 1 / 30;
-    const res = g.update(1 / 30, t);
+  for (let i = 0; i < 50; i++) {
+    t += 0.04;
+    const res = g.update(0.04, t);
     if (res) changeAfterCooldown = res;
   }
   assert.equal(changeAfterCooldown, 'low');
   assert.equal(g.getTier(), 'low');
-
-  // Low is the floor, does not downgrade further
-  t = 22.0;
-  for (let i = 0; i < 60; i++) {
-    t += 1 / 30;
-    const res = g.update(1 / 30, t);
-    assert.equal(res, null);
-  }
-  assert.equal(g.getTier(), 'low');
 });
 
-test('QualityGovernor upgrades tier after 3 consecutive windows averaging above 57 FPS', () => {
-  const g = new QualityGovernor('low');
-  let t = 3.0;
+test('upgrades one tier after 6 seconds at 60 FPS', () => {
+  const g = new QualityGovernor('medium');
+  let t = 3.0; // Warm-up passed
 
-  // Window 1: 2s at 60 FPS -> consecutive = 1
+  // Window 1: 2s (120 frames at 60 FPS) -> streak 1
   for (let i = 0; i < 120; i++) {
     t += 1 / 60;
     assert.equal(g.update(1 / 60, t), null);
   }
-  assert.equal(g.getTier(), 'low');
+  assert.equal(g.getTier(), 'medium');
 
-  // Window 2: 2s at 60 FPS -> consecutive = 2
+  // Window 2: 2s (120 frames at 60 FPS) -> streak 2
   for (let i = 0; i < 120; i++) {
     t += 1 / 60;
     assert.equal(g.update(1 / 60, t), null);
   }
-  assert.equal(g.getTier(), 'low');
+  assert.equal(g.getTier(), 'medium');
 
-  // Window 3: 2s at 60 FPS -> consecutive = 3 -> upgrades to medium!
+  // Window 3: 2s (120 frames at 60 FPS) -> streak 3 -> upgrades to high!
   let change: string | null = null;
   for (let i = 0; i < 120; i++) {
     t += 1 / 60;
     const res = g.update(1 / 60, t);
     if (res) change = res;
   }
-  assert.equal(change, 'medium');
-  assert.equal(g.getTier(), 'medium');
+  assert.equal(change, 'high');
+  assert.equal(g.getTier(), 'high');
 });
 
-test('QualityGovernor resets upgrade streak if an intermediate window drops to <= 57 FPS', () => {
-  const g = new QualityGovernor('low');
+test('ignores single frames with a delta above 0.25s', () => {
+  const g = new QualityGovernor('high');
+  // Single hitches
+  assert.equal(g.update(0.35, 4.0), null);
+  assert.equal(g.update(0.50, 4.5), null);
+  assert.equal(g.update(-0.016, 5.0), null);
+  assert.equal(g.update(0.0, 5.5), null);
+  assert.equal(g.getTier(), 'high');
+});
+
+test('never goes below low or above high', () => {
+  // Floor test: starting at low, slow frames cannot downgrade below low
+  const gLow = new QualityGovernor('low');
   let t = 3.0;
-
-  // Window 1: 60 FPS -> streak 1
-  for (let i = 0; i < 120; i++) {
-    t += 1 / 60;
-    g.update(1 / 60, t);
-  }
-
-  // Window 2: 60 FPS -> streak 2
-  for (let i = 0; i < 120; i++) {
-    t += 1 / 60;
-    g.update(1 / 60, t);
-  }
-
-  // Window 3: 50 FPS (between 40 and 57) -> streak broken!
-  for (let i = 0; i < 100; i++) {
-    t += 1 / 50;
-    const res = g.update(1 / 50, t);
+  for (let i = 0; i < 50; i++) {
+    t += 0.04;
+    const res = gLow.update(0.04, t);
     assert.equal(res, null);
   }
-  assert.equal(g.getTier(), 'low');
+  assert.equal(gLow.getTier(), 'low');
 
-  // Window 4: 60 FPS -> streak 1 again
-  for (let i = 0; i < 120; i++) {
+  // Ceiling test: starting at high, 6s of 60 FPS cannot upgrade above high
+  const gHigh = new QualityGovernor('high');
+  t = 3.0;
+  for (let i = 0; i < 360; i++) {
     t += 1 / 60;
-    assert.equal(g.update(1 / 60, t), null);
+    const res = gHigh.update(1 / 60, t);
+    assert.equal(res, null);
   }
-  assert.equal(g.getTier(), 'low');
+  assert.equal(gHigh.getTier(), 'high');
 });

@@ -313,15 +313,17 @@ export class StarfieldManager {
 
     // 4. Recycle Distant Galaxies ahead of camera in a repeating 3600-unit window
     const galaxyWindow = 3600;
-    for (const gData of this.galaxyData) {
+    for (let i = 0; i < this.galaxyData.length; i++) {
+      const gData = this.galaxyData[i];
       const offset = ((gData.baseZOffset - cameraZ) % galaxyWindow + galaxyWindow) % galaxyWindow - galaxyWindow;
       gData.group.position.set(gData.x, gData.y, cameraZ + offset);
     }
 
-    // Slowly rotate distant galaxies
-    this.distantGalaxies.children.forEach((g, idx) => {
-      g.rotation.y += delta * (0.015 + idx * 0.005);
-    });
+    // Slowly rotate distant galaxies without forEach closure
+    const galChildren = this.distantGalaxies.children;
+    for (let idx = 0; idx < galChildren.length; idx++) {
+      galChildren[idx].rotation.y += delta * (0.015 + idx * 0.005);
+    }
   }
 
   public dispose() {

@@ -982,7 +982,15 @@ export class CelestialFactory {
 
     return {
       group,
-      update: (_time: number, delta: number) => {
+      update: (_time: number, delta: number, _audioPulse?: number, cameraPos?: THREE.Vector3) => {
+        // Skip tumbling loop when field's group is more than 1500 units from the camera
+        if (cameraPos) {
+          group.getWorldPosition(_tempTargetPos);
+          if (_tempTargetPos.distanceTo(cameraPos) > 1500) {
+            return;
+          }
+        }
+
         // Slowly tumble individual asteroids
         for (let i = 0; i < Math.min(count, 120); i++) {
           const item = speeds[i];

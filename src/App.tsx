@@ -3,10 +3,10 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 import React, { useEffect, useRef, useState, useCallback } from 'react';
-import { SpaceJourneyEngine, SpaceEngineStatus, EngineDebugStats } from './space/spaceJourneyEngine';
+import type { SpaceJourneyEngine, SpaceEngineStatus, EngineDebugStats } from './space/spaceJourneyEngine';
 import { CosmicHud } from './components/CosmicHud';
 import { cosmicAudio } from './audio/cosmicAudio';
-import { FlightSpeedMode } from './space/sectorLogic';
+import type { FlightSpeedMode } from './space/sectorLogic';
 
 export default function App() {
   const canvasMountRef = useRef<HTMLDivElement | null>(null);
@@ -17,6 +17,7 @@ export default function App() {
   const [webGlError, setWebGlError] = useState<string | null>(null);
   const [isZenMode, setIsZenMode] = useState<boolean>(false);
   const [showExitZenPill, setShowExitZenPill] = useState<boolean>(false);
+  const [isEngineReady, setIsEngineReady] = useState<boolean>(false);
   const [isDebugVisible, setIsDebugVisible] = useState<boolean>(() => {
     if (typeof window === 'undefined') return false;
     const urlParams = new URLSearchParams(window.location.search);
@@ -26,39 +27,62 @@ export default function App() {
   const exitZenTimerRef = useRef<number | null>(null);
   const pointerStartRef = useRef<{ x: number; y: number; time: number } | null>(null);
 
-  // Initialize Three.js engine once in isolated container
+  // Dynamically lazy-load Three.js and the 3D engine once in isolated container
   useEffect(() => {
     if (!canvasMountRef.current) return;
+    let cancelled = false;
+    let engineInstance: SpaceJourneyEngine | null = null;
 
-    try {
-      const engine = new SpaceJourneyEngine(
-        canvasMountRef.current,
-        (status) => {
-          setEngineStatus(status);
-          setAudioPulse(status.audioPulse);
-        }
-      );
-      engineRef.current = engine;
+    import('./space/spaceJourneyEngine')
+      .then(({ SpaceJourneyEngine }) => {
+        if (cancelled || !canvasMountRef.current) return;
 
-      // Check query params for autostart
-      const urlParams = new URLSearchParams(window.location.search);
-      if (urlParams.get('autostart') === '1') {
-        cosmicAudio.init();
-        if (cosmicAudio.getIsMuted()) {
-          cosmicAudio.toggleMute();
+        try {
+          const engine = new SpaceJourneyEngine(
+            canvasMountRef.current,
+            (status) => {
+              if (cancelled) return;
+              setEngineStatus(status);
+              setAudioPulse(status.audioPulse);
+            }
+          );
+          engineInstance = engine;
+          engineRef.current = engine;
+          setIsEngineReady(true);
+
+          // Check query params for autostart
+          const urlParams = new URLSearchParams(window.location.search);
+          if (urlParams.get('autostart') === '1') {
+            cosmicAudio.init();
+            if (cosmicAudio.getIsMuted()) {
+              cosmicAudio.toggleMute();
+            }
+            setIsAudioMuted(cosmicAudio.getIsMuted());
+          }
+        } catch (err: unknown) {
+          if (!cancelled) {
+            const message = err instanceof Error ? err.message : 'WebGL2 is required';
+            setWebGlError(message);
+          }
         }
-        setIsAudioMuted(cosmicAudio.getIsMuted());
+      })
+      .catch((err: unknown) => {
+        if (!cancelled) {
+          const message = err instanceof Error ? err.message : 'Failed to initialize engine';
+          setWebGlError(message);
+        }
+      });
+
+    return () => {
+      cancelled = true;
+      if (engineInstance) {
+        engineInstance.dispose();
+      } else if (engineRef.current) {
+        engineRef.current.dispose();
       }
-
-      return () => {
-        engine.dispose();
-        engineRef.current = null;
-        cosmicAudio.dispose();
-      };
-    } catch (err: unknown) {
-      const message = err instanceof Error ? err.message : 'WebGL2 is required';
-      setWebGlError(message);
-    }
+      engineRef.current = null;
+      cosmicAudio.dispose();
+    };
   }, []);
 
   const handleSetSpeed = useCallback((mode: FlightSpeedMode) => {
@@ -198,6 +222,17 @@ export default function App() {
         ref={canvasMountRef}
         className="absolute inset-0 w-full h-full cursor-grab active:cursor-grabbing"
       />
+
+      {/* Centred engine initialising message (fading out once ready) */}
+      <div
+        className={`absolute inset-0 flex items-center justify-center pointer-events-none transition-opacity duration-700 z-40 ${
+          isEngineReady ? 'opacity-0' : 'opacity-100'
+        }`}
+      >
+        <div className="font-mono text-xs uppercase tracking-widest text-white/60 bg-black/60 px-4 py-2 rounded-full border border-white/10 shadow-lg">
+          Initialising engine…
+        </div>
+      </div>
 
       {/* Telemetry Debug Overlay (top-left, visible via ?debug or F key) */}
       {isDebugVisible && debugStats && (

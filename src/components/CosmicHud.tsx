@@ -21,7 +21,7 @@ import {
   EyeOff,
   Eye
 } from 'lucide-react';
-import { SpaceEngineStatus } from '../space/spaceJourneyEngine';
+import type { SpaceEngineStatus } from '../space/spaceJourneyEngine';
 import { FlightSpeedMode, BIOMES } from '../space/sectorLogic';
 
 interface CosmicHudProps {

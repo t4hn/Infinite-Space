@@ -37,6 +37,8 @@ export class SectorManager {
 
   private reducedNebulaDetail: boolean = false;
   private hideHalfNebulae: boolean = false;
+  private toDestroy: number[] = [];
+  private updateResult = { currentBiome: BIOMES[0], sectorIndex: 0 };
 
   constructor(scene: THREE.Scene) {
     this.scene = scene;
@@ -65,17 +67,25 @@ export class SectorManager {
     const sectorIndex = getSectorIndex(cameraZ, SECTOR_LENGTH);
     this.currentSectorIndex = sectorIndex;
 
-    // Ensure sectors are queued: current - 1, current, current + 1, current + 2
-    const neededIndices = [sectorIndex - 1, sectorIndex, sectorIndex + 1, sectorIndex + 2];
+    const minNeeded = sectorIndex - 1;
+    const maxNeeded = sectorIndex + 2;
 
-    for (const idx of neededIndices) {
+    // Queue needed sectors without allocating array
+    for (let idx = minNeeded; idx <= maxNeeded; idx++) {
       if (idx >= 0 && !this.activeSectors.has(idx) && !this.spawnQueue.includes(idx)) {
         this.spawnQueue.push(idx);
       }
     }
 
-    // Prune queue of items that are no longer in needed range
-    this.spawnQueue = this.spawnQueue.filter(idx => neededIndices.includes(idx));
+    // In-place prune of spawnQueue to avoid allocating array with filter()
+    let writeIdx = 0;
+    for (let i = 0; i < this.spawnQueue.length; i++) {
+      const qIdx = this.spawnQueue[i];
+      if (qIdx >= minNeeded && qIdx <= maxNeeded) {
+        this.spawnQueue[writeIdx++] = qIdx;
+      }
+    }
+    this.spawnQueue.length = writeIdx;
 
     // Spawn at most one new sector per frame to avoid hitches after a jump
     if (this.spawnQueue.length > 0) {
@@ -86,24 +96,31 @@ export class SectorManager {
     }
 
     // Remove distant sectors that have passed far behind the camera
-    for (const [idx, sector] of this.activeSectors.entries()) {
+    this.toDestroy.length = 0;
+    for (const [idx, sector] of this.activeSectors) {
       if (idx < sectorIndex - 1 || idx > sectorIndex + 3) {
-        this.destroySector(idx);
+        this.toDestroy.push(idx);
       } else {
         // Animate hero body and nebulae
         if (sector.heroBody) {
           sector.heroBody.update(time, delta, audioPulse, cameraPos);
         }
 
-        sector.nebulae.forEach((nebula) => {
+        const nebulae = sector.nebulae;
+        for (let n = 0; n < nebulae.length; n++) {
+          const nebula = nebulae[n];
           const mat = nebula.material as THREE.ShaderMaterial;
           if (mat.uniforms) {
             mat.uniforms.uTime.value = time;
             mat.uniforms.uAudioPulse.value = audioPulse;
           }
           nebula.rotation.y += delta * 0.02;
-        });
+        }
       }
+    }
+
+    for (let d = 0; d < this.toDestroy.length; d++) {
+      this.destroySector(this.toDestroy[d]);
     }
 
     const currentBiome = getBiomeForSector(sectorIndex);
@@ -111,7 +128,9 @@ export class SectorManager {
     this.targetAmbientColor.set(currentBiome.ambientLightColor);
     this.targetAmbientIntensity = currentBiome.ambientIntensity;
 
-    return { currentBiome, sectorIndex };
+    this.updateResult.currentBiome = currentBiome;
+    this.updateResult.sectorIndex = sectorIndex;
+    return this.updateResult;
   }
 
   private spawnSector(index: number) {
