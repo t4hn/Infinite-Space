@@ -242,9 +242,6 @@ export class SpaceJourneyEngine {
       const reactive = cosmicAudio.getReactiveMetrics();
       const reaction = calculateAudioReaction(reactive.bass, reactive.treble, 1.0);
 
-      // Update Starfield
-      this.starfield.update(this.cameraZ, this.currentSpeed, delta, reactive.pulse);
-
       // Update Sector Manager & Biomes
       const { currentBiome, sectorIndex } = this.sectorManager.update(
         this.cameraZ,
@@ -252,6 +249,15 @@ export class SpaceJourneyEngine {
         delta,
         reactive.pulse,
         this.camera.position
+      );
+
+      // Update Starfield with biome starDensity
+      this.starfield.update(
+        this.cameraZ,
+        this.currentSpeed,
+        delta,
+        reactive.pulse,
+        currentBiome.starDensity
       );
 
       // Smooth Lighting & Fog transitions matching current biome

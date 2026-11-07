@@ -181,3 +181,25 @@ test('calculateJumpTargetZ computes correct forward sector for target biome', ()
   assert.equal(unchangedZ, currentZ);
 });
 
+test('cosmic biomes define correct starDensity properties', () => {
+  const expectedDensities: Record<string, number> = {
+    orion_cradle: 1.4,
+    saturnian_rings: 1.0,
+    asteroid_shoals: 0.9,
+    singularity_rift: 1.2,
+    pulsar_beacon: 1.1,
+    ancient_anomaly: 1.0,
+    terrestrial_oasis: 1.0,
+    bootes_void: 0.8
+  };
+
+  for (const biome of BIOMES) {
+    assert.equal(
+      biome.starDensity,
+      expectedDensities[biome.id],
+      `Biome ${biome.id} starDensity should be ${expectedDensities[biome.id]} but got ${biome.starDensity}`
+    );
+    assert.ok(biome.starDensity >= 0.8, 'Star density must be at least 0.8 so no biome looks empty');
+  }
+});
+

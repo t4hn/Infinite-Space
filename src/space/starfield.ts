@@ -19,6 +19,13 @@ export class StarfieldManager {
   private streakCount: number = 600;
 
   private streakPositions: Float32Array;
+  private galaxyData: Array<{
+    group: THREE.Group;
+    x: number;
+    y: number;
+    baseZOffset: number;
+  }> = [];
+  private currentDensity: number = 1.0;
 
   constructor() {
     this.group = new THREE.Group();
@@ -66,6 +73,7 @@ export class StarfieldManager {
     });
 
     this.pinStars = new THREE.Points(pinGeo, pinMat);
+    this.pinStars.frustumCulled = false;
     this.group.add(this.pinStars);
 
     // 2. Mid-Depth Glowing Cluster Stars (Size attenuated, glowing star sprite)
@@ -108,6 +116,7 @@ export class StarfieldManager {
     });
 
     this.clusterStars = new THREE.Points(clusterGeo, clusterMat);
+    this.clusterStars.frustumCulled = false;
     this.group.add(this.clusterStars);
 
     // 3. High-Velocity Warp Streaks
@@ -152,6 +161,7 @@ export class StarfieldManager {
     });
 
     this.streakStars = new THREE.LineSegments(streakGeo, streakMat);
+    this.streakStars.frustumCulled = false;
     this.group.add(this.streakStars);
 
     // 4. Distant Spiral Galaxies
@@ -205,19 +215,26 @@ export class StarfieldManager {
       });
 
       const galaxyPoints = new THREE.Points(galaxyGeo, galaxyMat);
+      galaxyPoints.frustumCulled = false;
       galaxyGroup.add(galaxyPoints);
 
       const angle = (g / 6) * Math.PI * 2 + 0.4;
       const dist = 750 + (g * 140);
-      galaxyGroup.position.set(
-        Math.cos(angle) * dist,
-        (Math.sin(g * 2.3) * 220),
-        -900 - g * 550
-      );
+      const x = Math.cos(angle) * dist;
+      const y = Math.sin(g * 2.3) * 220;
+      const baseZOffset = -g * 600;
+
+      galaxyGroup.position.set(x, y, baseZOffset);
       galaxyGroup.rotation.x = Math.random() * Math.PI;
       galaxyGroup.rotation.y = Math.random() * Math.PI;
 
       this.distantGalaxies.add(galaxyGroup);
+      this.galaxyData.push({
+        group: galaxyGroup,
+        x,
+        y,
+        baseZOffset
+      });
     }
   }
 
@@ -225,7 +242,24 @@ export class StarfieldManager {
     return this.group;
   }
 
-  public update(cameraZ: number, warpSpeed: number, delta: number, audioPulse: number) {
+  public update(
+    cameraZ: number,
+    warpSpeed: number,
+    delta: number,
+    audioPulse: number,
+    targetDensity: number = 1.0
+  ) {
+    // 0. Smoothly lerp star density over time so transitions never jump
+    const lerpSpeed = Math.min(1.0, delta * 2.5);
+    this.currentDensity = THREE.MathUtils.lerp(this.currentDensity, targetDensity, lerpSpeed);
+
+    // Apply starDensity to pin and cluster stars with geometry.setDrawRange(0, floor(total * density / 1.4))
+    const pinDrawCount = Math.floor(this.pinCount * (this.currentDensity / 1.4));
+    this.pinStars.geometry.setDrawRange(0, Math.max(100, Math.min(this.pinCount, pinDrawCount)));
+
+    const clusterDrawCount = Math.floor(this.clusterCount * (this.currentDensity / 1.4));
+    this.clusterStars.geometry.setDrawRange(0, Math.max(100, Math.min(this.clusterCount, clusterDrawCount)));
+
     const boundary = 2800;
     const pinLead = 100;
 
@@ -271,6 +305,13 @@ export class StarfieldManager {
 
     const streakMat = this.streakStars.material as THREE.LineBasicMaterial;
     streakMat.opacity = Math.min(0.95, 0.3 + (warpSpeed / 100) * 0.65);
+
+    // 4. Recycle Distant Galaxies ahead of camera in a repeating 3600-unit window
+    const galaxyWindow = 3600;
+    for (const gData of this.galaxyData) {
+      const offset = ((gData.baseZOffset - cameraZ) % galaxyWindow + galaxyWindow) % galaxyWindow - galaxyWindow;
+      gData.group.position.set(gData.x, gData.y, cameraZ + offset);
+    }
 
     // Slowly rotate distant galaxies
     this.distantGalaxies.children.forEach((g, idx) => {

@@ -14,6 +14,7 @@ export interface CosmicBiome {
   ambientIntensity: number;
   primaryBodyType: 'gas_giant' | 'asteroid_field' | 'singularity' | 'pulsar' | 'terrestrial_planet' | 'space_anomaly' | 'deep_nebula' | 'cosmic_void';
   intensity: 'calm' | 'intense';
+  starDensity: number;
 }
 
 export const BIOMES: CosmicBiome[] = [
@@ -27,7 +28,8 @@ export const BIOMES: CosmicBiome[] = [
     ambientLightColor: '#7c4dff',
     ambientIntensity: 0.85,
     primaryBodyType: 'deep_nebula',
-    intensity: 'calm'
+    intensity: 'calm',
+    starDensity: 1.4
   },
   {
     id: 'saturnian_rings',
@@ -39,7 +41,8 @@ export const BIOMES: CosmicBiome[] = [
     ambientLightColor: '#ffd180',
     ambientIntensity: 0.9,
     primaryBodyType: 'gas_giant',
-    intensity: 'calm'
+    intensity: 'calm',
+    starDensity: 1.0
   },
   {
     id: 'asteroid_shoals',
@@ -51,7 +54,8 @@ export const BIOMES: CosmicBiome[] = [
     ambientLightColor: '#80cbc4',
     ambientIntensity: 0.7,
     primaryBodyType: 'asteroid_field',
-    intensity: 'intense'
+    intensity: 'intense',
+    starDensity: 0.9
   },
   {
     id: 'singularity_rift',
@@ -63,7 +67,8 @@ export const BIOMES: CosmicBiome[] = [
     ambientLightColor: '#ff9100',
     ambientIntensity: 1.1,
     primaryBodyType: 'singularity',
-    intensity: 'intense'
+    intensity: 'intense',
+    starDensity: 1.2
   },
   {
     id: 'pulsar_beacon',
@@ -75,7 +80,8 @@ export const BIOMES: CosmicBiome[] = [
     ambientLightColor: '#69f0ae',
     ambientIntensity: 1.0,
     primaryBodyType: 'pulsar',
-    intensity: 'intense'
+    intensity: 'intense',
+    starDensity: 1.1
   },
   {
     id: 'ancient_anomaly',
@@ -87,7 +93,8 @@ export const BIOMES: CosmicBiome[] = [
     ambientLightColor: '#e040fb',
     ambientIntensity: 0.8,
     primaryBodyType: 'space_anomaly',
-    intensity: 'intense'
+    intensity: 'intense',
+    starDensity: 1.0
   },
   {
     id: 'terrestrial_oasis',
@@ -99,7 +106,8 @@ export const BIOMES: CosmicBiome[] = [
     ambientLightColor: '#48cae4',
     ambientIntensity: 0.95,
     primaryBodyType: 'terrestrial_planet',
-    intensity: 'calm'
+    intensity: 'calm',
+    starDensity: 1.0
   },
   {
     id: 'bootes_void',
@@ -111,7 +119,8 @@ export const BIOMES: CosmicBiome[] = [
     ambientLightColor: '#7986cb',
     ambientIntensity: 0.5,
     primaryBodyType: 'cosmic_void',
-    intensity: 'calm'
+    intensity: 'calm',
+    starDensity: 0.8
   }
 ];
 
