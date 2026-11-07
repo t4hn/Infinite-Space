@@ -90,7 +90,6 @@ export const CosmicHud: React.FC<CosmicHudProps> = ({
   const sectorIndex = status?.sectorIndex ?? 0;
   const speedMode = status?.speedMode ?? 'cruise';
   const distanceLy = status?.distanceTraveledLy ?? 0;
-  const sectorProgress = Math.round((status?.sectorProgress ?? 0) * 100);
 
   return (
     <div className="absolute inset-0 pointer-events-none select-none overflow-hidden font-mono text-xs">
@@ -101,37 +100,10 @@ export const CosmicHud: React.FC<CosmicHudProps> = ({
 
       {/* Top Header Telemetry (Minimal & elegant) */}
       <div
-        className={`absolute top-5 left-5 right-5 flex justify-between items-start pointer-events-none transition-opacity duration-300 ${
+        className={`absolute top-5 left-5 right-5 flex justify-end items-start pointer-events-none transition-opacity duration-300 ${
           isZenMode ? 'opacity-0 pointer-events-none' : 'opacity-100'
         }`}
       >
-        <div
-          className={`flex flex-col gap-1 bg-black/60 border border-white/10 rounded-lg p-3 max-w-sm ${
-            isZenMode ? 'pointer-events-none' : 'pointer-events-auto'
-          }`}
-        >
-          <div className="flex items-center gap-2">
-            <span className="w-2 h-2 rounded-full bg-cyan-400" />
-            <span className="text-white/60 tracking-widest text-[10px]">AETHERIA DEEP SPACE</span>
-            <span className="text-white/30">•</span>
-            <span className="text-cyan-300 font-semibold uppercase">SEC-{sectorIndex.toString().padStart(3, '0')}</span>
-          </div>
-          <div className="text-sm font-sans font-medium text-white tracking-wide">
-            {currentBiome.name}
-          </div>
-          <div className="text-[11px] text-white/50 font-sans line-clamp-2 mt-0.5">
-            {currentBiome.description}
-          </div>
-
-          {/* Sector progress line */}
-          <div className="w-full bg-white/10 h-0.5 rounded-full mt-2 overflow-hidden">
-            <div
-              className="bg-cyan-400 h-full transition-all duration-300"
-              style={{ width: `${sectorProgress}%` }}
-            />
-          </div>
-        </div>
-
         {/* Top-Right Telemetry readouts */}
         <div
           className={`hidden sm:flex items-center gap-4 bg-black/60 border border-white/10 rounded-lg px-3.5 py-2 text-white/70 ${
@@ -347,7 +319,9 @@ export const CosmicHud: React.FC<CosmicHudProps> = ({
           {activeTab === 'lore' && (
             <div className="flex flex-col gap-1.5 py-1 text-white/80 font-sans">
               <div className="flex items-center gap-2">
-                <span className="text-cyan-300 font-semibold">{currentBiome.name}</span>
+                <span className="text-cyan-300 font-semibold">
+                  SEC-{sectorIndex.toString().padStart(3, '0')} • {currentBiome.name}
+                </span>
                 <span className="text-white/30">•</span>
                 <span className="text-white/50 text-[11px] uppercase tracking-wider">
                   Type: {currentBiome.primaryBodyType.replace('_', ' ')}
