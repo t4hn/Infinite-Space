@@ -824,7 +824,7 @@ export class CelestialFactory {
       bumpScale: 0.18,
       roughness: 1.0,
       metalness: 0.0,
-      envMapIntensity: 0.3,
+      envMapIntensity: 0.6,
       flatShading: true
     });
 
@@ -894,20 +894,21 @@ export class CelestialFactory {
       meshes.push(instMesh);
     }
 
-    // Palette: charcoal, brown and rust greys (#2b2a28 to #5a5248, with rust and blue-grey tints)
+    // Palette: light tints that only modulate the texture
     const rockColors = [
-      new THREE.Color('#2b2a28'), // dark charcoal
-      new THREE.Color('#33312e'), // deep stony charcoal
-      new THREE.Color('#3c3732'), // dark brown-grey
-      new THREE.Color('#453e37'), // brown-grey
-      new THREE.Color('#4c453d'), // mid brown-grey
-      new THREE.Color('#524b42'), // warm stony grey
-      new THREE.Color('#5a5248'), // lighter brown-grey limit
-      new THREE.Color('#4a372f'), // rust tint
-      new THREE.Color('#543b31'), // rust-brown tint
-      new THREE.Color('#30343a'), // cool blue-grey tint
-      new THREE.Color('#2e333a'), // deep blue-grey tint
-      new THREE.Color('#363b44'), // slate blue-grey tint
+      // Neutral greys/browns: #8c857b, #9a9288, #a8a095, #b5ada1, #c4bcb0, #d6cfc4
+      new THREE.Color('#8c857b'),
+      new THREE.Color('#9a9288'),
+      new THREE.Color('#a8a095'),
+      new THREE.Color('#b5ada1'),
+      new THREE.Color('#c4bcb0'),
+      new THREE.Color('#d6cfc4'),
+      // Rust tints: #b88a74, #c49a84
+      new THREE.Color('#b88a74'),
+      new THREE.Color('#c49a84'),
+      // Blue-grey tints: #8f98a6, #9aa3b0
+      new THREE.Color('#8f98a6'),
+      new THREE.Color('#9aa3b0'),
     ];
 
     const dummy = new THREE.Object3D();
@@ -953,9 +954,9 @@ export class CelestialFactory {
       // Per-instance color variation with setColorAt
       const baseColor = rockColors[Math.floor(rng() * rockColors.length)].clone();
       const tintJitter = (rng() - 0.5) * 0.04;
-      baseColor.r = Math.max(0.06, Math.min(0.48, baseColor.r + tintJitter));
-      baseColor.g = Math.max(0.06, Math.min(0.48, baseColor.g + tintJitter));
-      baseColor.b = Math.max(0.06, Math.min(0.48, baseColor.b + tintJitter));
+      baseColor.r = Math.max(0.0, Math.min(1.0, baseColor.r + tintJitter));
+      baseColor.g = Math.max(0.0, Math.min(1.0, baseColor.g + tintJitter));
+      baseColor.b = Math.max(0.0, Math.min(1.0, baseColor.b + tintJitter));
       meshes[g].setColorAt(localIdx, baseColor);
 
       speeds.push({

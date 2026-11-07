@@ -242,8 +242,8 @@ export class SpaceTextureGenerator {
     canvas.height = 512;
     const ctx = canvas.getContext('2d')!;
 
-    // Dark charcoal space rock base
-    ctx.fillStyle = '#222224';
+    // Dark charcoal space rock base carrying base tone
+    ctx.fillStyle = '#6e6a64';
     ctx.fillRect(0, 0, canvas.width, canvas.height);
 
     // Craters and pits with subtle, non-white rims
@@ -253,9 +253,9 @@ export class SpaceTextureGenerator {
       const rad = 4 + Math.random() * 26;
 
       const grad = ctx.createRadialGradient(cx - rad * 0.15, cy - rad * 0.15, 1, cx, cy, rad);
-      grad.addColorStop(0, '#101012');       // Deep shadowed crater floor
-      grad.addColorStop(0.65, '#1a1a1d');    // Crater inner wall
-      grad.addColorStop(0.88, '#323236');    // Crater rim only slightly lighter than surface
+      grad.addColorStop(0, '#3a3836');       // Deep crater floor about #3a3836
+      grad.addColorStop(0.65, '#4a4846');    // Crater inner wall about #4a4846
+      grad.addColorStop(0.88, '#85817b');    // Crater rim only slightly lighter than base (#85817b)
       grad.addColorStop(1, 'transparent');   // Smooth blending into rock surface
 
       ctx.fillStyle = grad;
@@ -264,11 +264,11 @@ export class SpaceTextureGenerator {
       ctx.fill();
     }
 
-    // Add fine grain mineral noise directly to the canvas pixels
+    // Add fine grain mineral noise directly to the canvas pixels (+/- 12)
     const imgData = ctx.getImageData(0, 0, canvas.width, canvas.height);
     const data = imgData.data;
     for (let i = 0; i < data.length; i += 4) {
-      const grain = (Math.random() - 0.5) * 20;
+      const grain = (Math.random() - 0.5) * 24; // +/- 12
       data[i] = Math.max(0, Math.min(255, data[i] + grain));
       data[i + 1] = Math.max(0, Math.min(255, data[i + 1] + grain));
       data[i + 2] = Math.max(0, Math.min(255, data[i + 2] + grain));

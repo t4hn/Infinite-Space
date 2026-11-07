@@ -13,6 +13,7 @@ export interface CosmicBiome {
   ambientLightColor: string;
   ambientIntensity: number;
   primaryBodyType: 'gas_giant' | 'asteroid_field' | 'singularity' | 'pulsar' | 'terrestrial_planet' | 'space_anomaly' | 'deep_nebula' | 'cosmic_void';
+  intensity: 'calm' | 'intense';
 }
 
 export const BIOMES: CosmicBiome[] = [
@@ -25,7 +26,8 @@ export const BIOMES: CosmicBiome[] = [
     nebulaSecondaryColor: '#00e5ff',
     ambientLightColor: '#7c4dff',
     ambientIntensity: 0.85,
-    primaryBodyType: 'deep_nebula'
+    primaryBodyType: 'deep_nebula',
+    intensity: 'calm'
   },
   {
     id: 'saturnian_rings',
@@ -36,7 +38,8 @@ export const BIOMES: CosmicBiome[] = [
     nebulaSecondaryColor: '#448aff',
     ambientLightColor: '#ffd180',
     ambientIntensity: 0.9,
-    primaryBodyType: 'gas_giant'
+    primaryBodyType: 'gas_giant',
+    intensity: 'calm'
   },
   {
     id: 'asteroid_shoals',
@@ -47,7 +50,8 @@ export const BIOMES: CosmicBiome[] = [
     nebulaSecondaryColor: '#26a69a',
     ambientLightColor: '#80cbc4',
     ambientIntensity: 0.7,
-    primaryBodyType: 'asteroid_field'
+    primaryBodyType: 'asteroid_field',
+    intensity: 'intense'
   },
   {
     id: 'singularity_rift',
@@ -58,7 +62,8 @@ export const BIOMES: CosmicBiome[] = [
     nebulaSecondaryColor: '#7c4dff',
     ambientLightColor: '#ff9100',
     ambientIntensity: 1.1,
-    primaryBodyType: 'singularity'
+    primaryBodyType: 'singularity',
+    intensity: 'intense'
   },
   {
     id: 'pulsar_beacon',
@@ -69,7 +74,8 @@ export const BIOMES: CosmicBiome[] = [
     nebulaSecondaryColor: '#00b0ff',
     ambientLightColor: '#69f0ae',
     ambientIntensity: 1.0,
-    primaryBodyType: 'pulsar'
+    primaryBodyType: 'pulsar',
+    intensity: 'intense'
   },
   {
     id: 'ancient_anomaly',
@@ -80,7 +86,8 @@ export const BIOMES: CosmicBiome[] = [
     nebulaSecondaryColor: '#651fff',
     ambientLightColor: '#e040fb',
     ambientIntensity: 0.8,
-    primaryBodyType: 'space_anomaly'
+    primaryBodyType: 'space_anomaly',
+    intensity: 'intense'
   },
   {
     id: 'terrestrial_oasis',
@@ -91,7 +98,8 @@ export const BIOMES: CosmicBiome[] = [
     nebulaSecondaryColor: '#90e0ef',
     ambientLightColor: '#48cae4',
     ambientIntensity: 0.95,
-    primaryBodyType: 'terrestrial_planet'
+    primaryBodyType: 'terrestrial_planet',
+    intensity: 'calm'
   },
   {
     id: 'bootes_void',
@@ -102,7 +110,8 @@ export const BIOMES: CosmicBiome[] = [
     nebulaSecondaryColor: '#1a237e',
     ambientLightColor: '#7986cb',
     ambientIntensity: 0.5,
-    primaryBodyType: 'cosmic_void'
+    primaryBodyType: 'cosmic_void',
+    intensity: 'calm'
   }
 ];
 
@@ -138,12 +147,93 @@ export function getSectorProgress(cameraZ: number, sectorLength: number = SECTOR
   return (absZ % sectorLength) / sectorLength;
 }
 
+const cycleMemo = new Map<number, CosmicBiome[]>();
+
+function shuffleBiomes(array: readonly CosmicBiome[], rng: () => number): CosmicBiome[] {
+  const arr = [...array];
+  for (let i = arr.length - 1; i > 0; i--) {
+    const j = Math.floor(rng() * (i + 1));
+    const temp = arr[i];
+    arr[i] = arr[j];
+    arr[j] = temp;
+  }
+  return arr;
+}
+
+function getCycleBiomes(cycleIndex: number): CosmicBiome[] {
+  if (cycleMemo.has(cycleIndex)) {
+    return cycleMemo.get(cycleIndex)!;
+  }
+
+  // Sequentially build cycles from 0 up to cycleIndex so each cycle can check previous cycle boundary
+  for (let c = 0; c <= cycleIndex; c++) {
+    if (cycleMemo.has(c)) continue;
+
+    let prev1: CosmicBiome | null = null;
+    let prev2: CosmicBiome | null = null;
+    if (c > 0) {
+      const prevCycle = cycleMemo.get(c - 1)!;
+      prev1 = prevCycle[prevCycle.length - 1];
+      prev2 = prevCycle[prevCycle.length - 2];
+    }
+
+    let attempt = 0;
+    while (true) {
+      const rng = mulberry32(c * 1000 + attempt);
+      let candidate: CosmicBiome[];
+
+      if (c === 0) {
+        // Sector 0 is always Orion Stellar Cradle, as a calm opening
+        const orion = BIOMES.find(b => b.id === 'orion_cradle')!;
+        const others = BIOMES.filter(b => b.id !== 'orion_cradle');
+        candidate = [orion, ...shuffleBiomes(others, rng)];
+      } else {
+        candidate = shuffleBiomes(BIOMES, rng);
+      }
+
+      attempt++;
+
+      // Constraint 1: the same biome is never adjacent across cycle boundaries
+      if (prev1 && candidate[0].id === prev1.id) {
+        continue;
+      }
+
+      // Constraint 2: there are never more than 2 intense sectors in a row, including across boundaries
+      const seq: CosmicBiome[] = prev1 && prev2
+        ? [prev2, prev1, ...candidate]
+        : (prev1 ? [prev1, ...candidate] : candidate);
+
+      let valid = true;
+      for (let s = 2; s < seq.length; s++) {
+        if (
+          seq[s].intensity === 'intense' &&
+          seq[s - 1].intensity === 'intense' &&
+          seq[s - 2].intensity === 'intense'
+        ) {
+          valid = false;
+          break;
+        }
+      }
+
+      if (valid) {
+        cycleMemo.set(c, candidate);
+        break;
+      }
+    }
+  }
+
+  return cycleMemo.get(cycleIndex)!;
+}
+
 /**
  * Deterministically determines which biome a given sector index belongs to.
  */
 export function getBiomeForSector(sectorIndex: number): CosmicBiome {
-  const index = Math.abs(sectorIndex) % BIOMES.length;
-  return BIOMES[index];
+  const absIndex = Math.abs(sectorIndex);
+  const cycleIndex = Math.floor(absIndex / BIOMES.length);
+  const inCycleIndex = absIndex % BIOMES.length;
+  const cycle = getCycleBiomes(cycleIndex);
+  return cycle[inCycleIndex];
 }
 
 /**
@@ -241,15 +331,19 @@ export function calculateJumpTargetZ(
   currentCameraZ: number,
   sectorLength: number = SECTOR_LENGTH
 ): number {
-  const biomeIndex = BIOMES.findIndex(b => b.id === targetBiomeId);
-  if (biomeIndex === -1) return currentCameraZ;
+  const biomeExists = BIOMES.some(b => b.id === targetBiomeId);
+  if (!biomeExists) return currentCameraZ;
 
   const curSector = getSectorIndex(currentCameraZ, sectorLength);
-  let targetSector = curSector + 1;
-  while ((targetSector % BIOMES.length) !== biomeIndex) {
-    targetSector++;
+  const maxSearch = curSector + 2 * BIOMES.length;
+
+  for (let s = curSector + 1; s <= maxSearch; s++) {
+    const biome = getBiomeForSector(s);
+    if (biome.id === targetBiomeId) {
+      return -s * sectorLength - 200;
+    }
   }
 
-  return -targetSector * sectorLength - 200;
+  return currentCameraZ;
 }
 
